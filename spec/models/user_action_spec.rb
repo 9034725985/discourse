@@ -2,6 +2,10 @@ require 'spec_helper'
 
 describe UserAction do
 
+  before do
+    ActiveRecord::Base.observers.enable :all
+  end
+
   it { should validate_presence_of :action_type }
   it { should validate_presence_of :user_id }
 
@@ -58,7 +62,7 @@ describe UserAction do
 
       other_stats.should == expecting
 
-      public_topic.destroy
+      public_topic.trash!
       stats_for_user.should == []
       stream_count.should == 0
 
@@ -66,7 +70,7 @@ describe UserAction do
 
       category = Fabricate(:category, secure: true)
 
-      public_topic.recover
+      public_topic.recover!
       public_topic.category = category
       public_topic.save
 

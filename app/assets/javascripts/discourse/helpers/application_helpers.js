@@ -57,6 +57,26 @@ Handlebars.registerHelper('categoryLink', function(property, options) {
 });
 
 /**
+  Inserts a Discourse.TextField to allow the user to enter information.
+
+  @method textField
+  @for Handlebars
+**/
+Ember.Handlebars.registerHelper('textField', function(options) {
+  var hash = options.hash,
+      types = options.hashTypes;
+
+  for (var prop in hash) {
+    if (types[prop] === 'ID') {
+      hash[prop + 'Binding'] = hash[prop];
+      delete hash[prop];
+    }
+  }
+
+  return Ember.Handlebars.helpers.view.call(this, Discourse.TextField, options);
+});
+
+/**
   Produces a bound link to a category
 
   @method boundCategoryLink
@@ -139,7 +159,18 @@ Handlebars.registerHelper('avatar', function(user, options) {
 
     var title;
     if (!options.hash.ignoreTitle) {
-      title = Em.get(user, 'title') || Em.get(user, 'description');
+      // first try to get a title
+      title = Em.get(user, 'title');
+      // if there was no title provided
+      if (!title) {
+        // try to retrieve a description
+        var description = Em.get(user, 'description');
+        // if a description has been provided
+        if (description && description.length > 0) {
+          // preprend the username before the description
+          title = username + " - " + description;
+        }
+      }
     }
 
     return new Handlebars.SafeString(Discourse.Utilities.avatarImg({

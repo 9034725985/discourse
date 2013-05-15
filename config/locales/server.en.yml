@@ -44,6 +44,17 @@ en:
   rss_topics_in_category: "RSS feed of topics in the '%{category}' category"
   author_wrote: "%{author} wrote:"
 
+  groups:
+    default_names:
+      admins: "admins"
+      moderators: "moderators"
+      staff: "staff"
+      trust_level_1: "trust_level_1"
+      trust_level_2: "trust_level_2"
+      trust_level_3: "trust_level_3"
+      trust_level_4: "trust_level_4"
+      trust_level_5: "trust_level_5"
+
   education:
     until_posts:
       one: "post"
@@ -337,18 +348,18 @@ en:
     top_referrers:
       title: "Top Referrers"
       xaxis: "User"
-      num_visits: "Visits"
+      num_clicks: "Clicks"
       num_topics: "Topics"
     top_traffic_sources:
       title: "Top Traffic Sources"
       xaxis: "Domain"
-      num_visits: "Visits"
+      num_clicks: "Clicks"
       num_topics: "Topics"
       num_users: "Users"
     top_referred_topics:
       title: "Top Referred Topics"
       xaxis: "Topic"
-      num_visits: "Visits"
+      num_clicks: "Clicks"
 
   dashboard:
     rails_env_warning: "Your server is running in %{env} mode."
@@ -361,7 +372,7 @@ en:
     facebook_config_warning: 'The server is configured to allow signup and log in with Facebook (enable_facebook_logins), but the app id and app secret values are not set. Go to <a href="/admin/site_settings">the Site Settings</a> and update the settings. <a href="https://github.com/discourse/discourse/wiki/The-Discourse-Admin-Quick-Start-Guide#enable-facebook-logins" target="_blank">See this guide to learn more</a>.'
     twitter_config_warning: 'The server is configured to allow signup and log in with Twitter (enable_twitter_logins), but the key and secret values are not set. Go to <a href="/admin/site_settings">the Site Settings</a> and update the settings. <a href="https://github.com/discourse/discourse/wiki/The-Discourse-Admin-Quick-Start-Guide#enable-twitter-logins" target="_blank">See this guide to learn more</a>.'
     github_config_warning: 'The server is configured to allow signup and log in with GitHub (enable_github_logins), but the client id and secret values are not set. Go to <a href="/admin/site_settings">the Site Settings</a> and update the settings. <a href="https://github.com/discourse/discourse/wiki/The-Discourse-Admin-Quick-Start-Guide" target="_blank">See this guide to learn more</a>.'
-    failing_emails_warning: "There are %{num_failed_jobs} email jobs that failed. Check your config/production.rb file and ensure that the config.action_mailer settings are correct."
+    failing_emails_warning: 'There are %{num_failed_jobs} email jobs that failed. Check your config/environments/production.rb file and ensure that the config.action_mailer settings are correct. <a href="/sidekiq/retries" target="_blank">See the failed jobs in Sidekiq</a>.'
     default_logo_warning: "You haven't customized the logo images for your site. Update logo_url, logo_small_url, and favicon_url in the <a href='/admin/site_settings'>Site Settings</a>."
     contact_email_missing: "You haven't provided a contact email for your site. Please update contact_email in the <a href='/admin/site_settings'>Site Settings</a>."
     contact_email_invalid: "The site contact email is invalid. Please update contact_email in the <a href='/admin/site_settings'>Site Settings</a>."
@@ -551,7 +562,7 @@ en:
     min_body_similar_length: "The minimum length of a post's body before it will be checked for similar topics"
 
     category_colors: "A pipe (|) separated list of hexadecimal color values allowed for categories"
-    max_upload_size_kb: "The maximum size of files we allow users to upload in kb - be sure to configure the limit in nginx (client_max_body_size) / apache or proxy as well."
+    max_upload_size_kb: "The maximum size of files we allow users to upload in kB - be sure to configure the limit in nginx (client_max_body_size) / apache or proxy as well."
     max_similar_results: "How many similar topics to show a user while they are composing a new topic"
 
     title_prettify: "Prevent common title typos and errors, including all caps, lowercase first character, multiple ! and ?, extra . at end, etc."
@@ -596,6 +607,11 @@ en:
     archived_disabled: "This topic is now unarchived. It is no longer frozen, and can be changed."
     closed_enabled: "This topic is now closed. New replies are no longer allowed."
     closed_disabled: "This topic is now opened. New replies are allowed."
+    autoclosed_enabled:
+      zero: "This topic was automatically closed after 1 day. New replies are no longer allowed."
+      one: "This topic was automatically closed after 1 day. New replies are no longer allowed."
+      other: "This topic was automatically closed after %{count} days. New replies are no longer allowed."
+    autoclosed_disabled: "This topic is now opened. New replies are allowed."
     pinned_enabled: "This topic is now pinned. It will appear at the top of its category until it is either unpinned by a moderator, or the Clear Pin button is pressed."
     pinned_disabled: "This topic is now unpinned. It will no longer appear at the top of its category."
     visible_enabled: "This topic is now visible. It will be displayed in topic lists."

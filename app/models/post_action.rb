@@ -1,18 +1,18 @@
 require_dependency 'rate_limiter'
 require_dependency 'system_message'
+require_dependency 'trashable'
 
 class PostAction < ActiveRecord::Base
-  class AlreadyFlagged < StandardError; end
+  class AlreadyActed < StandardError; end
 
   include RateLimiter::OnCreateRecord
+  include Trashable
 
   attr_accessible :post_action_type_id, :post_id, :user_id, :post, :user, :post_action_type, :message, :related_post_id
 
   belongs_to :post
   belongs_to :user
   belongs_to :post_action_type
-
-  acts_as_paranoid
 
   rate_limit :post_action_rate_limiter
 
@@ -22,7 +22,8 @@ class PostAction < ActiveRecord::Base
     posts_flagged_count = PostAction.joins(post: :topic)
                                     .where('post_actions.post_action_type_id' => PostActionType.notify_flag_types.values,
                                            'posts.deleted_at' => nil,
-                                           'topics.deleted_at' => nil).count('DISTINCT posts.id')
+                                           'topics.deleted_at' => nil)
+                                    .count('DISTINCT posts.id')
 
     $redis.set('posts_flagged_count', posts_flagged_count)
     user_ids = User.staff.select(:id).map {|u| u.id}
@@ -73,12 +74,16 @@ class PostAction < ActiveRecord::Base
 
   def self.act(user, post, post_action_type_id, message = nil)
     begin
-      title, target_usernames, subtype, body = nil
+      title, target_usernames, target_group_names, subtype, body = nil
 
       if message
         [:notify_moderators, :notify_user].each do |k|
           if post_action_type_id == PostActionType.types[k]
-            target_usernames = k == :notify_moderators ? target_moderators(user) : post.user.username
+            if k == :notify_moderators
+              target_group_names = target_moderators
+            else
+              target_usernames = post.user.username
+            end
             title = I18n.t("post_action_types.#{k}.email_title",
                             title: post.topic.title)
             body = I18n.t("post_action_types.#{k}.email_body",
@@ -90,9 +95,10 @@ class PostAction < ActiveRecord::Base
       end
 
       related_post_id = nil
-      if target_usernames.present?
+      if target_usernames.present? || target_group_names.present?
         related_post_id = PostCreator.new(user,
                               target_usernames: target_usernames,
+                              target_group_names: target_group_names,
                               archetype: Archetype.private_message,
                               subtype: subtype,
                               title: title,
@@ -113,10 +119,14 @@ class PostAction < ActiveRecord::Base
 
   def self.remove_act(user, post, post_action_type_id)
     if action = where(post_id: post.id, user_id: user.id, post_action_type_id: post_action_type_id).first
-      action.destroy
-      action.deleted_at = Time.zone.now
+      action.trash!
       action.run_callbacks(:save)
     end
+  end
+
+  def remove_act!(user)
+    trash!
+    run_callbacks(:save)
   end
 
   def is_bookmark?
@@ -156,9 +166,12 @@ class PostAction < ActiveRecord::Base
   end
 
   before_create do
-    raise AlreadyFlagged if is_flag? && PostAction.where(user_id: user_id,
-                                                         post_id: post_id,
-                                                         post_action_type_id: PostActionType.flag_types.values).exists?
+    post_action_type_ids = is_flag? ? PostActionType.flag_types.values : post_action_type_id
+    raise AlreadyActed if PostAction.where(user_id: user_id,
+                                           post_id: post_id,
+                                           post_action_type_id: post_action_type_ids,
+                                           deleted_at: nil)
+                                    .exists?
   end
 
   after_save do
@@ -206,13 +219,8 @@ class PostAction < ActiveRecord::Base
 
   protected
 
-  def self.target_moderators(me)
-    User
-      .where("moderator = 't' or admin = 't'")
-      .where('id <> ?', [me.id])
-      .select('username')
-      .map{|u| u.username}
-      .join(',')
+  def self.target_moderators
+    Group[:moderators].name
   end
 
 end

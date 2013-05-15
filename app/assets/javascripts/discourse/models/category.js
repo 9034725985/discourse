@@ -10,7 +10,14 @@ Discourse.Category = Discourse.Model.extend({
 
   init: function() {
     this._super();
-    if (!this.get('id') && this.get('name')) this.set('is_uncategorized', true);
+    if (!this.get('id') && this.get('name')) {
+      this.set('is_uncategorized', true);
+      if (!this.get('color'))      this.set('color',      Discourse.SiteSettings.uncategorized_color);
+      if (!this.get('text_color')) this.set('text_color', Discourse.SiteSettings.uncategorized_text_color);
+    }
+
+    this.set("availableGroups", Em.A(this.get("available_groups")));
+    this.set("groups", Em.A(this.groups));
   },
 
   url: function() {
@@ -26,31 +33,44 @@ Discourse.Category = Discourse.Model.extend({
   }.property('topic_count'),
 
   save: function(args) {
-    var url = Discourse.getURL("/categories");
+    var url = "/categories";
     if (this.get('id')) {
-      url = Discourse.getURL("/categories/") + (this.get('id'));
+      url = "/categories/" + (this.get('id'));
     }
 
-    return this.ajax(url, {
+    return Discourse.ajax(url, {
       data: {
         name: this.get('name'),
         color: this.get('color'),
         text_color: this.get('text_color'),
-        hotness: this.get('hotness')
+        hotness: this.get('hotness'),
+        secure: this.get('secure'),
+        group_names: this.get('groups').join(",")
       },
       type: this.get('id') ? 'PUT' : 'POST'
     });
   },
 
   destroy: function(callback) {
-    return Discourse.ajax(Discourse.getURL("/categories/") + (this.get('slug') || this.get('id')), { type: 'DELETE' });
+    return Discourse.ajax("/categories/" + (this.get('slug') || this.get('id')), { type: 'DELETE' });
+  },
+
+  addGroup: function(group){
+    this.get("groups").addObject(group);
+    this.get("availableGroups").removeObject(group);
+  },
+
+
+  removeGroup: function(group){
+    this.get("groups").removeObject(group);
+    this.get("availableGroups").addObject(group);
   }
 
 });
 
 Discourse.Category.reopenClass({
   findBySlugOrId: function(slugOrId) {
-    return Discourse.ajax({url: Discourse.getURL("/categories/") + slugOrId + ".json"}).then(function (result) {
+    return Discourse.ajax("/categories/" + slugOrId + ".json").then(function (result) {
       return Discourse.Category.create(result.category);
     });
   }

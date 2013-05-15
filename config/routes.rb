@@ -29,7 +29,13 @@ Discourse::Application.routes.draw do
 
     get 'reports/:type' => 'reports#show'
 
-    resources :groups, constraints: AdminConstraint.new
+    resources :groups, constraints: AdminConstraint.new do
+      collection do
+        post 'refresh_automatic_groups' => 'groups#refresh_automatic_groups'
+      end
+      get 'users'
+    end
+
     resources :users, id: USERNAME_ROUTE_FORMAT do
       collection do
         get 'list/:query' => 'users#index'
@@ -44,6 +50,8 @@ Discourse::Application.routes.draw do
       put 'grant_moderation', constraints: AdminConstraint.new
       put 'approve'
       post 'refresh_browsers', constraints: AdminConstraint.new
+      put 'activate'
+      put 'deactivate'
     end
 
     resources :impersonate, constraints: AdminConstraint.new
@@ -195,6 +203,7 @@ Discourse::Application.routes.draw do
   put 't/:topic_id/clear-pin' => 'topics#clear_pin', constraints: {topic_id: /\d+/}
   put 't/:topic_id/mute' => 'topics#mute', constraints: {topic_id: /\d+/}
   put 't/:topic_id/unmute' => 'topics#unmute', constraints: {topic_id: /\d+/}
+  put 't/:topic_id/autoclose' => 'topics#autoclose', constraints: {topic_id: /\d+/}
 
   get 't/:topic_id/:post_number' => 'topics#show', constraints: {topic_id: /\d+/, post_number: /\d+/}
   get 't/:slug/:topic_id.rss' => 'topics#feed', format: :rss, constraints: {topic_id: /\d+/}
@@ -207,7 +216,7 @@ Discourse::Application.routes.draw do
 
   post 't/:topic_id/notifications' => 'topics#set_notifications' , constraints: {topic_id: /\d+/}
 
-  get 'md/:topic_id(/:post_number)' => 'posts#markdown'
+  get 'raw/:topic_id(/:post_number)' => 'posts#markdown'
 
 
   resources :invites

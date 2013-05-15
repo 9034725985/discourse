@@ -222,14 +222,14 @@ describe Guardian do
       it 'correctly handles post visibility' do
         Guardian.new(user).can_see?(post).should be_true
 
-        post.destroy
+        post.trash!
         post.reload
         Guardian.new(user).can_see?(post).should be_false
         Guardian.new(admin).can_see?(post).should be_true
 
-        post.recover
+        post.recover!
         post.reload
-        topic.destroy
+        topic.trash!
         topic.reload
         Guardian.new(user).can_see?(post).should be_false
         Guardian.new(admin).can_see?(post).should be_true
@@ -755,6 +755,7 @@ describe Guardian do
   end
 
   context 'can_grant_moderation?' do
+
     it "wont allow a non logged in user to grant an moderator's access" do
       Guardian.new.can_grant_moderation?(user).should be_false
     end
@@ -763,8 +764,8 @@ describe Guardian do
       Guardian.new(user).can_grant_moderation?(moderator).should be_false
     end
 
-    it 'wont allow an admin to grant their own access' do
-      Guardian.new(admin).can_grant_moderation?(admin).should be_false
+    it 'will allow an admin to grant their own moderator access' do
+      Guardian.new(admin).can_grant_moderation?(admin).should be_true
     end
 
     it 'wont allow an admin to grant it to an already moderator' do
@@ -785,12 +786,21 @@ describe Guardian do
       Guardian.new(user).can_revoke_moderation?(moderator).should be_false
     end
 
-    it 'wont allow an moderator to revoke their own moderator' do
+    it 'wont allow a moderator to revoke their own moderator' do
       Guardian.new(moderator).can_revoke_moderation?(moderator).should be_false
     end
 
     it "allows an admin to revoke a moderator's access" do
       Guardian.new(admin).can_revoke_moderation?(moderator).should be_true
+    end
+
+    it "allows an admin to revoke a moderator's access from self" do
+      admin.moderator = true
+      Guardian.new(admin).can_revoke_moderation?(admin).should be_true
+    end
+
+    it "does not allow revoke from non moderators" do
+      Guardian.new(admin).can_revoke_moderation?(admin).should be_false
     end
   end
 

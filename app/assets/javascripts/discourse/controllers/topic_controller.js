@@ -6,7 +6,7 @@
   @namespace Discourse
   @module Discourse
 **/
-Discourse.TopicController = Discourse.ObjectController.extend({
+Discourse.TopicController = Discourse.ObjectController.extend(Discourse.SelectedPostsCount, {
   userFilters: new Em.Set(),
   multiSelect: false,
   bestOf: false,
@@ -22,20 +22,14 @@ Discourse.TopicController = Discourse.ObjectController.extend({
     return posts.filterProperty('selected');
   }.property('content.posts.@each.selected'),
 
-  selectedCount: function() {
-    if (!this.get('selectedPosts')) return 0;
-    return this.get('selectedPosts').length;
-  }.property('selectedPosts'),
-
   canMoveSelected: function() {
     if (!this.get('content.can_move_posts')) return false;
-    // For now, we can move it if we can delete it since the posts need to be deleted.
-    return this.get('canDeleteSelected');
+    return (this.get('selectedPostsCount') > 0);
   }.property('canDeleteSelected'),
 
   canDeleteSelected: function() {
     var selectedPosts = this.get('selectedPosts');
-    if (!(selectedPosts && selectedPosts.length > 0)) return false;
+    if (this.get('selectedPostsCount') === 0) return false;
 
     var canDelete = true;
     selectedPosts.each(function(p) {
@@ -83,6 +77,7 @@ Discourse.TopicController = Discourse.ObjectController.extend({
     if (!modalController) return;
 
     modalController.show(Discourse.MoveSelectedView.create({
+      topicController: this,
       topic: this.get('content'),
       selectedPosts: this.get('selectedPosts')
     }));
@@ -90,13 +85,12 @@ Discourse.TopicController = Discourse.ObjectController.extend({
 
   deleteSelected: function() {
     var topicController = this;
-    return bootbox.confirm(Em.String.i18n("post.delete.confirm", {
-      count: this.get('selectedCount')
-    }), function(result) {
+    return bootbox.confirm(Em.String.i18n("post.delete.confirm", { count: this.get('selectedPostsCount')}), function(result) {
       if (result) {
         var selectedPosts = topicController.get('selectedPosts');
         Discourse.Post.deleteMany(selectedPosts);
         topicController.get('content.posts').removeObjects(selectedPosts);
+        topicController.toggleMultiSelect();
       }
     });
   },
@@ -432,7 +426,7 @@ Discourse.TopicController = Discourse.ObjectController.extend({
 
   deletePost: function(post) {
     // Moderators can delete posts. Regular users can only create a deleted at message.
-    if (Discourse.get('currentUser.moderator')) {
+    if (Discourse.get('currentUser.staff')) {
       post.set('deleted_at', new Date());
     } else {
       post.set('cooked', Discourse.Markdown.cook(Em.String.i18n("post.deleted_by_author")));

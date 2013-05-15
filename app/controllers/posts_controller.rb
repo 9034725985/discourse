@@ -36,7 +36,8 @@ class PostsController < ApplicationController
                                    target_usernames: params[:target_usernames],
                                    reply_to_post_number: params[:post][:reply_to_post_number],
                                    image_sizes: params[:image_sizes],
-                                   meta_data: params[:meta_data])
+                                   meta_data: params[:meta_data],
+                                   auto_close_days: params[:auto_close_days])
     post = post_creator.create
 
     if post_creator.errors.present?
@@ -92,7 +93,7 @@ class PostsController < ApplicationController
 
     result = {post: post_serializer.as_json}
     if revisor.category_changed.present?
-      result[:category] = CategorySerializer.new(revisor.category_changed, scope: guardian, root: false).as_json
+      result[:category] = BasicCategorySerializer.new(revisor.category_changed, scope: guardian, root: false).as_json
     end
 
     render_json_dump(result)
@@ -128,7 +129,7 @@ class PostsController < ApplicationController
   def recover
     post = find_post_from_params
     guardian.ensure_can_recover_post!(post)
-    post.recover
+    post.recover!
     render nothing: true
   end
 
@@ -186,8 +187,8 @@ class PostsController < ApplicationController
     def find_post_from_params
       finder = Post.where(id: params[:id] || params[:post_id])
 
-      # Include deleted posts if the user is a moderator
-      finder = finder.with_deleted if current_user.try(:moderator?)
+      # Include deleted posts if the user is staff
+      finder = finder.with_deleted if current_user.try(:staff?)
 
       post = finder.first
       guardian.ensure_can_see!(post)

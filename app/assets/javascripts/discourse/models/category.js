@@ -20,6 +20,10 @@ Discourse.Category = Discourse.Model.extend({
     this.set("groups", Em.A(this.groups));
   },
 
+  searchContext: function() {
+    return ({ type: 'category', id: this.get('id') });
+  }.property('id'),
+
   url: function() {
     return Discourse.getURL("/category/") + (this.get('slug'));
   }.property('name'),
@@ -45,7 +49,8 @@ Discourse.Category = Discourse.Model.extend({
         text_color: this.get('text_color'),
         hotness: this.get('hotness'),
         secure: this.get('secure'),
-        group_names: this.get('groups').join(",")
+        group_names: this.get('groups').join(","),
+        auto_close_days: this.get('auto_close_days')
       },
       type: this.get('id') ? 'PUT' : 'POST'
     });
@@ -69,6 +74,11 @@ Discourse.Category = Discourse.Model.extend({
 });
 
 Discourse.Category.reopenClass({
+
+  list: function() {
+    return Discourse.Site.instance().get('categories');
+  },
+
   findBySlugOrId: function(slugOrId) {
     return Discourse.ajax("/categories/" + slugOrId + ".json").then(function (result) {
       return Discourse.Category.create(result.category);

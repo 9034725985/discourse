@@ -27,6 +27,10 @@ Discourse.ComposerController = Discourse.Controller.extend({
     if (c) return c.appendText(text);
   },
 
+  categories: function() {
+    return Discourse.Category.list();
+  }.property(),
+
   save: function(force) {
     var composer,
       _this = this,
@@ -35,6 +39,14 @@ Discourse.ComposerController = Discourse.Controller.extend({
       buttons;
 
     composer = this.get('content');
+
+    if( composer.get('cantSubmitPost') ) {
+      this.set('view.showTitleTip', true);
+      this.set('view.showCategoryTip', true);
+      this.set('view.showReplyTip', true);
+      return;
+    }
+
     composer.set('disableDrafts', true);
 
     // for now handle a very narrow use case
@@ -324,6 +336,9 @@ Discourse.ComposerController = Discourse.Controller.extend({
   close: function() {
     this.set('content', null);
     this.set('view.content', null);
+    this.set('view.showTitleTip', false);
+    this.set('view.showCategoryTip', false);
+    this.set('view.showReplyTip', false);
   },
 
   closeIfCollapsed: function() {

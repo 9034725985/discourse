@@ -1,6 +1,9 @@
 # encoding: utf-8
 # This file contains content for the client portion of Discourse, sent out
 # to the Javascript app.
+#
+# To validate this YAML file after you change it, please paste it into
+# http://yamllint.com/
 
 en:
   js:
@@ -262,7 +265,7 @@ en:
     best_of:
       title: "Best Of"
       enabled_description: You are currently viewing the "Best Of" view of this topic.
-      description: "There are <b>{{count}}</b> posts in this topic. That's a lot! Would you like to save time by switching your view to show only the posts with the most interactions and responses?"
+      description: "There are <b>{{count}}</b> posts in this topic. That's a lot! Would you like to save time by showing only the best posts?"
       enable: 'Switch to "Best Of" view'
       disable: 'Cancel "Best Of"'
 
@@ -334,6 +337,14 @@ en:
       min_length:
         need_more_for_title: "{{n}} to go for the title"
         need_more_for_reply: "{{n}} to go for the reply"
+
+      error:
+        title_missing: "Title is required."
+        title_too_short: "Title must be at least {{min}} characters long."
+        title_too_long: "Title must be less than {{max}} characters long."
+        post_missing: "Post can't be empty."
+        post_length: "Post must be at least {{min}} characters long."
+        category_missing: "You must choose a category."
 
       save_edit: "Save Edit"
       reply_original: "Reply on Original Topic"
@@ -547,7 +558,7 @@ en:
         invisible: "Make Invisible"
         visible: "Make Visible"
         reset_read: "Reset Read Data"
-        multi_select: "Select Posts to Merge/Split"
+        multi_select: "Select for Merge/Split"
         convert_to_topic: "Convert to Regular Topic"
 
       reply:
@@ -775,6 +786,8 @@ en:
       edit_long: "Edit Category"
       edit_uncategorized: "Edit Uncategorized"
       view: 'View Topics in Category'
+      general: 'General'
+      settings: 'Settings'
       delete: 'Delete Category'
       create: 'Create Category'
       save: 'Save Category'
@@ -800,6 +813,7 @@ en:
       add_group: "Add Group"
       security: "Security"
       allowed_groups: "Allowed Groups:"
+      auto_close_label: "Auto-close topics after:"
 
 
     flagging:

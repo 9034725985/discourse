@@ -65,14 +65,18 @@ class ApplicationController < ActionController::Base
   end
 
   rescue_from Discourse::NotFound do
-    if !request.format || request.format.html?
-      # for now do a simple remap, we may look at cleaner ways of doing the render
-      #
-      # Sam: I am confused about this, we need a comment that explains why this is conditional
-      raise ActiveRecord::RecordNotFound
+
+    if request.format && request.format.json?
+      render status: 404, layout: false, text: "[error: 'not found']"
     else
-      render file: 'public/404', formats: [:html], layout: false, status: 404
+      f = Topic.where(deleted_at: nil, archetype: "regular")
+      @latest = f.order('views desc').take(10)
+      @recent = f.order('created_at desc').take(10)
+      @slug =  params[:slug].class == String ? params[:slug] : ''
+      @slug.gsub!('-',' ')
+      render status: 404, layout: 'no_js', template: '/exceptions/not_found'
     end
+
   end
 
   rescue_from Discourse::InvalidAccess do
@@ -170,6 +174,19 @@ class ApplicationController < ActionController::Base
       yield
     end
   end
+
+
+  def fetch_user_from_params
+    username_lower = params[:username].downcase
+    username_lower.gsub!(/\.json$/, '')
+
+    user = User.where(username_lower: username_lower).first
+    raise Discourse::NotFound.new if user.blank?
+
+    guardian.ensure_can_see!(user)
+    user
+  end
+
 
   private
 

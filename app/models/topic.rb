@@ -36,14 +36,23 @@ class Topic < ActiveRecord::Base
   rate_limit :limit_topics_per_day
   rate_limit :limit_private_messages_per_day
 
-  validate :title_quality
-  validates_presence_of :title
-  validate :title, -> { SiteSetting.topic_title_length.include? :length }
+  before_validation :sanitize_title
+
+  validates :title, :presence => true,
+                    :length => {  :in => SiteSetting.topic_title_length,
+                                  :allow_blank => true },
+                    :quality_title => { :unless => :private_message? },
+                    :unique_among  => { :unless => Proc.new { |t| (SiteSetting.allow_duplicate_topic_titles? || t.private_message?) },
+                                        :message => :has_already_been_used,
+                                        :allow_blank => true,
+                                        :case_sensitive => false,
+                                        :collection => Proc.new{ Topic.listable_topics } }
+
+  after_validation do
+    self.title = TextCleaner.clean_title(TextSentinel.title_sentinel(title).text) if errors[:title].empty?
+  end
 
   serialize :meta_data, ActiveRecord::Coders::Hstore
-
-  before_validation :sanitize_title
-  validate :unique_title
 
   belongs_to :category
   has_many :posts
@@ -95,6 +104,10 @@ class Topic < ActiveRecord::Base
   before_create do
     self.bumped_at ||= Time.now
     self.last_post_user_id ||= user_id
+    if !@ignore_category_auto_close and self.category and self.category.auto_close_days and self.auto_close_at.nil?
+      self.auto_close_at = self.category.auto_close_days.days.from_now
+      self.auto_close_user = (self.user.staff? ? self.user : Discourse.system_user)
+    end
   end
 
   after_create do
@@ -112,6 +125,7 @@ class Topic < ActiveRecord::Base
   before_save do
     if (auto_close_at_changed? and !auto_close_at_was.nil?) or (auto_close_user_id_changed? and auto_close_at)
       Jobs.cancel_scheduled_job(:close_topic, {topic_id: id})
+      true
     end
   end
 
@@ -137,22 +151,6 @@ class Topic < ActiveRecord::Base
     RateLimiter.new(user, "pms-per-day:#{Date.today.to_s}", SiteSetting.max_private_messages_per_day, 1.day.to_i)
   end
 
-  # Validate unique titles if a site setting is set
-  def unique_title
-    return if SiteSetting.allow_duplicate_topic_titles?
-
-    # Let presence validation catch it if it's blank
-    return if title.blank?
-
-    # Private messages can be called whatever they want
-    return if private_message?
-
-    finder = Topic.listable_topics.where("lower(title) = ?", title.downcase)
-    finder = finder.where("id != ?", self.id) if self.id.present?
-
-    errors.add(:title, I18n.t(:has_already_been_used)) if finder.exists?
-  end
-
   def fancy_title
     return title unless SiteSetting.title_fancy_entities?
 
@@ -161,19 +159,6 @@ class Topic < ActiveRecord::Base
     require 'redcarpet' unless defined? Redcarpet
 
     Redcarpet::Render::SmartyPants.render(title)
-  end
-
-  def title_quality
-    # We don't care about quality on private messages
-    return if private_message?
-
-    sentinel = TextSentinel.title_sentinel(title)
-    if sentinel.valid?
-      # clean up the title
-      self.title = TextCleaner.clean_title(sentinel.text)
-    else
-      errors.add(:title, I18n.t(:is_invalid))
-    end
   end
 
   def sanitize_title
@@ -736,7 +721,68 @@ class Topic < ActiveRecord::Base
   end
 
   def auto_close_days=(num_days)
+    @ignore_category_auto_close = true
     self.auto_close_at = (num_days and num_days.to_i > 0.0 ? num_days.to_i.days.from_now : nil)
   end
 
+  def secure_category?
+    category && category.secure
+  end
 end
+
+# == Schema Information
+#
+# Table name: topics
+#
+#  id                      :integer          not null, primary key
+#  title                   :string(255)      not null
+#  last_posted_at          :datetime
+#  created_at              :datetime         not null
+#  updated_at              :datetime         not null
+#  views                   :integer          default(0), not null
+#  posts_count             :integer          default(0), not null
+#  user_id                 :integer          not null
+#  last_post_user_id       :integer          not null
+#  reply_count             :integer          default(0), not null
+#  featured_user1_id       :integer
+#  featured_user2_id       :integer
+#  featured_user3_id       :integer
+#  avg_time                :integer
+#  deleted_at              :datetime
+#  highest_post_number     :integer          default(0), not null
+#  image_url               :string(255)
+#  off_topic_count         :integer          default(0), not null
+#  like_count              :integer          default(0), not null
+#  incoming_link_count     :integer          default(0), not null
+#  bookmark_count          :integer          default(0), not null
+#  star_count              :integer          default(0), not null
+#  category_id             :integer
+#  visible                 :boolean          default(TRUE), not null
+#  moderator_posts_count   :integer          default(0), not null
+#  closed                  :boolean          default(FALSE), not null
+#  archived                :boolean          default(FALSE), not null
+#  bumped_at               :datetime         not null
+#  has_best_of             :boolean          default(FALSE), not null
+#  meta_data               :hstore
+#  vote_count              :integer          default(0), not null
+#  archetype               :string(255)      default("regular"), not null
+#  featured_user4_id       :integer
+#  notify_moderators_count :integer          default(0), not null
+#  spam_count              :integer          default(0), not null
+#  illegal_count           :integer          default(0), not null
+#  inappropriate_count     :integer          default(0), not null
+#  pinned_at               :datetime
+#  score                   :float
+#  percent_rank            :float            default(1.0), not null
+#  notify_user_count       :integer          default(0), not null
+#  subtype                 :string(255)
+#  slug                    :string(255)
+#  auto_close_at           :datetime
+#  auto_close_user_id      :integer
+#
+# Indexes
+#
+#  idx_topics_user_id_deleted_at     (user_id)
+#  index_forum_threads_on_bumped_at  (bumped_at)
+#
+

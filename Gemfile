@@ -9,7 +9,7 @@ gem 'barber', '0.3.0'
 
 gem 'vestal_versions', git: 'https://github.com/zhangyuan/vestal_versions'
 
-gem 'message_bus'
+gem 'message_bus', git: 'https://github.com/SamSaffron/message_bus'
 gem 'rails_multisite', path: 'vendor/gems/rails_multisite'
 gem 'simple_handlebars_rails', path: 'vendor/gems/simple_handlebars_rails'
 
@@ -108,6 +108,7 @@ group :test, :development do
   gem 'simplecov', require: false
   gem 'terminal-notifier-guard', require: false
   gem 'timecop'
+  gem 'rspec-given'
 end
 
 group :development do
@@ -115,6 +116,8 @@ group :development do
   gem 'binding_of_caller'
   gem 'librarian', '>= 0.0.25', require: false
   gem 'pry-rails'
+  # https://github.com/ctran/annotate_models/pull/106
+  gem 'annotate', :git => 'https://github.com/SamSaffron/annotate_models.git'
 end
 
 # we are using a custom sprockets repo to work around: https://github.com/rails/rails/issues/8099#issuecomment-16137638

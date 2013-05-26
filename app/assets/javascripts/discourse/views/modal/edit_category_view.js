@@ -8,10 +8,31 @@
 **/
 Discourse.EditCategoryView = Discourse.ModalBodyView.extend({
   templateName: 'modal/edit_category',
-  appControllerBinding: 'Discourse.appController',
-
-  // black & white only for foreground colors
+  generalSelected:  Ember.computed.equal('selectedTab', 'general'),
+  securitySelected: Ember.computed.equal('selectedTab', 'security'),
+  settingsSelected: Ember.computed.equal('selectedTab', 'settings'),
   foregroundColors: ['FFFFFF', '000000'],
+
+  init: function() {
+    this._super();
+    this.set('selectedTab', 'general');
+  },
+
+  modalClass: function() {
+    return "edit-category-modal " + (this.present('category.description') ? 'full' : 'small');
+  }.property('category.description'),
+
+  selectGeneral: function() {
+    this.set('selectedTab', 'general');
+  },
+
+  selectSecurity: function() {
+    this.set('selectedTab', 'security');
+  },
+
+  selectSettings: function() {
+    this.set('selectedTab', 'settings');
+  },
 
   disabled: function() {
     if (this.get('saving') || this.get('deleting')) return true;
@@ -34,16 +55,18 @@ Discourse.EditCategoryView = Discourse.ModalBodyView.extend({
 
   // background colors are available as a pipe-separated string
   backgroundColors: function() {
+    var categories = Discourse.Category.list();
     return Discourse.SiteSettings.category_colors.split("|").map(function(i) { return i.toUpperCase(); }).concat(
-                Discourse.site.categories.map(function(c) { return c.color.toUpperCase(); }) ).uniq();
+                categories.map(function(c) { return c.color.toUpperCase(); }) ).uniq();
   }.property('Discourse.SiteSettings.category_colors'),
 
   usedBackgroundColors: function() {
-    return Discourse.site.categories.map(function(c) {
+    var categories = Discourse.Category.list();
+    return categories.map(function(c) {
       // If editing a category, don't include its color:
       return (this.get('category.id') && this.get('category.color').toUpperCase() === c.color.toUpperCase()) ? null : c.color.toUpperCase();
     }, this).compact();
-  }.property('Discourse.site.categories', 'category.id', 'category.color'),
+  }.property('category.id', 'category.color'),
 
   title: function() {
     if (this.get('category.id')) return Em.String.i18n("category.edit_long");
@@ -76,7 +99,7 @@ Discourse.EditCategoryView = Discourse.ModalBodyView.extend({
       // We need the topic_count to be correct, so get the most up-to-date info about this category from the server.
       Discourse.Category.findBySlugOrId( this.get('category.slug') || this.get('category.id') ).then( function(cat) {
         categoryView.set('category', cat);
-        Discourse.get('site').updateCategory(cat);
+        Discourse.Site.instance().updateCategory(cat);
         categoryView.set('id', categoryView.get('category.slug'));
         categoryView.set('loading', false);
       });

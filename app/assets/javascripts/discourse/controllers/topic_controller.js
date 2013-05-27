@@ -29,6 +29,9 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
     return (this.get('selectedPostsCount') > 0);
   }.property('selectedPostsCount'),
 
+  categories: function() {
+    return Discourse.Category.list();
+  }.property(),
 
   canSelectAll: Em.computed.not('allPostsSelected'),
 
@@ -246,7 +249,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
   loadPosts: function(opts) {
     var topicController = this;
     this.get('content').loadPosts(opts).then(function () {
-      Em.run.next(function () { topicController.updateBottomBar(); });
+      Em.run.scheduleOnce('afterRender', topicController, 'updateBottomBar');
     });
   },
 
@@ -276,7 +279,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
         posts.pushObject(Discourse.Post.create(p, topic));
       });
 
-      Em.run.next(function () { topicController.updateBottomBar(); });
+      Em.run.scheduleOnce('afterRender', topicController, 'updateBottomBar');
 
       topicController.set('filtered_posts_count', result.filtered_posts_count);
       topicController.set('loadingBelow', false);
@@ -462,6 +465,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
 
   showHistory: function(post) {
     var modalController = this.get('controllers.modal');
+
     if (modalController) {
       modalController.show(Discourse.HistoryView.create({
         originalPost: post

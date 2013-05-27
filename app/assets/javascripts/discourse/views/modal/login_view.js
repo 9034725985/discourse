@@ -8,10 +8,14 @@
 **/
 Discourse.LoginView = Discourse.ModalBodyView.extend({
   templateName: 'modal/login',
-  siteBinding: 'Discourse.site',
   title: Em.String.i18n('login.title'),
   authenticate: null,
   loggingIn: false,
+
+
+  site: function() {
+    return Discourse.Site.instance();
+  }.property(),
 
   showView: function(view) {
     return this.get('controller').show(view);
@@ -161,7 +165,7 @@ Discourse.LoginView = Discourse.ModalBodyView.extend({
     this.set('loginPassword', $('#hidden-login-form input[name=password]').val());
 
     var loginView = this;
-    Em.run.next(function() {
+    Em.run.schedule('afterRender', function() {
       $('#login-account-password').keydown(function(e) {
         if (e.keyCode === 13) {
           loginView.login();

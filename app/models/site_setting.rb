@@ -35,6 +35,7 @@ class SiteSetting < ActiveRecord::Base
   client_setting(:max_post_length, 16000)
   client_setting(:min_topic_title_length, 15)
   client_setting(:max_topic_title_length, 255)
+  client_setting(:allow_uncategorized_topics, true)
   client_setting(:min_search_term_length, 3)
   client_setting(:flush_timings_secs, 5)
   client_setting(:supress_reply_directly_below, true)
@@ -216,11 +217,26 @@ class SiteSetting < ActiveRecord::Base
   end
 
   def self.homepage
-    top_menu.split('|')[0]
+    # TODO objectify this
+    x = top_menu.split('|')[0].split(',')[0]
   end
 
   def self.anonymous_homepage
-    top_menu.split('|').select{ |f| ['latest', 'hot', 'categories', 'category'].include? f }[0]
+    # TODO objectify this
+    top_menu.split('|').map{|f| f.split(',')[0] }.select{ |f| ['latest', 'hot', 'categories', 'category'].include? f}[0]
   end
 
 end
+
+# == Schema Information
+#
+# Table name: site_settings
+#
+#  id         :integer          not null, primary key
+#  name       :string(255)      not null
+#  data_type  :integer          not null
+#  value      :text
+#  created_at :datetime         not null
+#  updated_at :datetime         not null
+#
+

@@ -26,30 +26,6 @@ describe Topic do
 
   it_behaves_like "a versioned model"
 
-  context '.title_quality' do
-
-    it "strips a title when identifying length" do
-      Fabricate.build(:topic, title: (" " * SiteSetting.min_topic_title_length) + "x").should_not be_valid
-    end
-
-    it "doesn't allow a long title" do
-      Fabricate.build(:topic, title: "x" * (SiteSetting.max_topic_title_length + 1)).should_not be_valid
-    end
-
-    it "doesn't allow a short title" do
-      Fabricate.build(:topic, title: "x" * (SiteSetting.min_topic_title_length + 1)).should_not be_valid
-    end
-
-    it "allows a regular title with a few ascii characters" do
-      Fabricate.build(:topic, title: "hello this is my cool topic! welcome: all;").should be_valid
-    end
-
-    it "allows non ascii" do
-      Fabricate.build(:topic, title: "Iñtërnâtiônàlizætiøn").should be_valid
-    end
-
-  end
-
   context 'slug' do
 
     let(:title) { "hello world topic" }
@@ -102,7 +78,7 @@ describe Topic do
         SiteSetting.expects(:allow_duplicate_topic_titles?).returns(true)
       end
 
-      it "won't allow another topic to be created with the same name" do
+      it "will allow another topic to be created with the same name" do
         new_topic.should be_valid
       end
     end
@@ -112,10 +88,7 @@ describe Topic do
   context 'html in title' do
 
     def build_topic_with_title(title)
-      t = build(:topic, title: title)
-      t.sanitize_title
-      t.title_quality
-      t
+      build(:topic, title: title).tap{ |t| t.valid? }
     end
 
     let(:topic_bold) { build_topic_with_title("Topic with <b>bold</b> text in its title" ) }
@@ -985,11 +958,6 @@ describe Topic do
 
   describe 'auto-close' do
     context 'a new topic' do
-      it 'when auto_close_at is not present, it does not queue a job to close the topic' do
-        Jobs.expects(:enqueue_at).never
-        Fabricate(:topic)
-      end
-
       context 'auto_close_at is set' do
         it 'queues a job to close the topic' do
           Timecop.freeze(Time.zone.now) do
@@ -1013,6 +981,13 @@ describe Topic do
             job_args[:user_id] == topic_closer.id
           end
           Fabricate(:topic, auto_close_at: 7.days.from_now, auto_close_user: topic_closer, user: topic_creator)
+        end
+
+        it "ignores the category's default auto-close" do
+          Timecop.freeze(Time.zone.now) do
+            Jobs.expects(:enqueue_at).with(7.days.from_now, :close_topic, all_of( has_key(:topic_id), has_key(:user_id) ))
+            Fabricate(:topic, auto_close_at: 7.days.from_now, user: Fabricate(:admin), category: Fabricate(:category, auto_close_days: 2))
+          end
         end
       end
     end
@@ -1090,7 +1065,33 @@ describe Topic do
           topic.save.should be_true
         end
       end
+
+      it "ignores the category's default auto-close" do
+        Timecop.freeze(Time.zone.now) do
+          topic = Fabricate(:topic, category: Fabricate(:category, auto_close_days: 14))
+          Jobs.expects(:enqueue_at).with(12.hours.from_now, :close_topic, has_entries(topic_id: topic.id, user_id: topic.user_id))
+          topic.auto_close_at = 12.hours.from_now
+          topic.save.should be_true
+        end
+      end
     end
   end
 
+  describe '#secure_category?' do
+    let(:category){ Category.new }
+
+    it "is true if the category is secure" do
+      category.stubs(:secure).returns(true)
+      Topic.new(:category => category).should be_secure_category
+    end
+
+    it "is false if the category is not secure" do
+      category.stubs(:secure).returns(false)
+      Topic.new(:category => category).should_not be_secure_category
+    end
+
+    it "is false if there is no category" do
+      Topic.new(:category => nil).should_not be_secure_category
+    end
+  end
 end

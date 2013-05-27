@@ -26,7 +26,7 @@ class PostAction < ActiveRecord::Base
                                     .count('DISTINCT posts.id')
 
     $redis.set('posts_flagged_count', posts_flagged_count)
-    user_ids = User.staff.select(:id).map {|u| u.id}
+    user_ids = User.staff.pluck(:id)
     MessageBus.publish('/flagged_counts', { total: posts_flagged_count }, { user_ids: user_ids })
   end
 
@@ -242,3 +242,25 @@ class PostAction < ActiveRecord::Base
   end
 
 end
+
+# == Schema Information
+#
+# Table name: post_actions
+#
+#  id                  :integer          not null, primary key
+#  post_id             :integer          not null
+#  user_id             :integer          not null
+#  post_action_type_id :integer          not null
+#  deleted_at          :datetime
+#  created_at          :datetime         not null
+#  updated_at          :datetime         not null
+#  deleted_by          :integer
+#  message             :text
+#  related_post_id     :integer
+#
+# Indexes
+#
+#  idx_unique_actions             (user_id,post_action_type_id,post_id,deleted_at) UNIQUE
+#  index_post_actions_on_post_id  (post_id)
+#
+

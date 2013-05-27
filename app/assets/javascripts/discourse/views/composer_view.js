@@ -91,7 +91,7 @@ Discourse.ComposerView = Discourse.View.extend({
 
   resize: function() {
     // this still needs to wait on animations, need a clean way to do that
-    return Em.run.next(null, function() {
+    return Em.run.schedule('afterRender', function() {
       var replyControl = $('#reply-control');
       var h = replyControl.height() || 0;
       var sizePx = "" + h + "px";
@@ -263,7 +263,7 @@ Discourse.ComposerView = Discourse.View.extend({
       // cf. https://github.com/blueimp/jQuery-File-Upload/wiki/API#how-to-cancel-an-upload
       var jqXHR = data.xhr();
       // need to wait for the link to show up in the DOM
-      Em.run.next(function() {
+      Em.run.schedule('afterRender', function() {
         // bind on the click event on the cancel link
         $('#cancel-image-upload').on('click', function() {
           // cancel the upload
@@ -334,9 +334,11 @@ Discourse.ComposerView = Discourse.View.extend({
         caretPosition = Discourse.Utilities.caretPosition(ctrl),
         current = this.get('content.reply');
     this.set('content.reply', current.substring(0, caretPosition) + text + current.substring(caretPosition, current.length));
-    return Em.run.next(function() {
-      return Discourse.Utilities.setCaretPosition(ctrl, caretPosition + text.length);
+
+    Em.run.schedule('afterRender', function() {
+      Discourse.Utilities.setCaretPosition(ctrl, caretPosition + text.length);
     });
+
   },
 
   // Uses javascript to get the image sizes from the preview, if present
@@ -367,7 +369,41 @@ Discourse.ComposerView = Discourse.View.extend({
       $adminOpts.show();
       $wmd.css('top', wmdTop + parseInt($adminOpts.css('height'),10) + 'px' );
     }
-  }
+  },
+
+  titleValidation: function() {
+    var title = this.get('content.title'), reason;
+    if( !title || title.length < 1 ){
+      reason = Em.String.i18n('composer.error.title_missing');
+    } else if( title.length < Discourse.SiteSettings.min_topic_title_length ) {
+      reason = Em.String.i18n('composer.error.title_too_short', {min: Discourse.SiteSettings.min_topic_title_length})
+    } else if( title.length > Discourse.SiteSettings.max_topic_title_length ) {
+      reason = Em.String.i18n('composer.error.title_too_long', {max: Discourse.SiteSettings.max_topic_title_length})
+    }
+
+    if( reason ) {
+      return Discourse.InputValidation.create({ failed: true, reason: reason });
+    }
+  }.property('content.title'),
+
+  categoryValidation: function() {
+    if( !Discourse.SiteSettings.allow_uncategorized_topics && !this.get('content.categoryName')) {
+      return Discourse.InputValidation.create({ failed: true, reason: Em.String.i18n('composer.error.category_missing') });
+    }
+  }.property('content.categoryName'),
+
+  replyValidation: function() {
+    var reply = this.get('content.reply'), reason;
+    if( !reply || reply.length < 1 ){
+      reason = Em.String.i18n('composer.error.post_missing');
+    } else if( reply.length < Discourse.SiteSettings.min_post_length ) {
+      reason = Em.String.i18n('composer.error.post_length', {min: Discourse.SiteSettings.min_post_length})
+    }
+
+    if( reason ) {
+      return Discourse.InputValidation.create({ failed: true, reason: reason });
+    }
+  }.property('content.reply')
 });
 
 // not sure if this is the right way, keeping here for now, we could use a mixin perhaps

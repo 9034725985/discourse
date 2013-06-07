@@ -54,7 +54,7 @@ Discourse.AdminUser = Discourse.User.extend({
   approve: function() {
     this.set('can_approve', false);
     this.set('approved', true);
-    this.set('approved_by', Discourse.get('currentUser'));
+    this.set('approved_by', Discourse.User.current());
     Discourse.ajax("/admin/users/" + (this.get('id')) + "/approve", {type: 'PUT'});
   },
 
@@ -146,6 +146,28 @@ Discourse.AdminUser = Discourse.User.extend({
     }, function(e) {
       // failed
       var error = Em.String.i18n('admin.user.deactivate_failed', { error: "http: " + e.status + " - " + e.body });
+      bootbox.alert(error);
+    });
+  },
+
+  unblock: function() {
+    Discourse.ajax('/admin/users/' + this.id + '/unblock', {type: 'PUT'}).then(function() {
+      // succeeded
+      window.location.reload();
+    }, function(e) {
+      // failed
+      var error = Em.String.i18n('admin.user.unblock_failed', { error: "http: " + e.status + " - " + e.body });
+      bootbox.alert(error);
+    });
+  },
+
+  block: function() {
+    Discourse.ajax('/admin/users/' + this.id + '/block', {type: 'PUT'}).then(function() {
+      // succeeded
+      window.location.reload();
+    }, function(e) {
+      // failed
+      var error = Em.String.i18n('admin.user.block_failed', { error: "http: " + e.status + " - " + e.body });
       bootbox.alert(error);
     });
   },

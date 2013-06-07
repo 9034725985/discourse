@@ -68,8 +68,12 @@ Discourse.Composer = Discourse.Model.extend({
     return false;
   }.property('editingPost', 'creatingTopic', 'post.post_number'),
 
+  canCategorize: function() {
+    return (this.get('editTitle') && !this.get('creatingPrivateMessage'));
+  }.property('editTitle', 'creatingPrivateMessage'),
+
   showAdminOptions: function() {
-    if (this.get('creatingTopic') && Discourse.get('currentUser.staff')) return true;
+    if (this.get('creatingTopic') && Discourse.User.current('staff')) return true;
     return false;
   }.property('editTitle'),
 
@@ -164,20 +168,32 @@ Discourse.Composer = Discourse.Model.extend({
     //    - creating a new topic
     //    - editing the 1st post
     //    - creating a private message
-    if (this.get('editTitle') &&
-          (this.get('titleLength') < Discourse.SiteSettings.min_topic_title_length ||
-            this.get('titleLength') > Discourse.SiteSettings.max_topic_title_length) ) return true;
+
+    if (this.get('editTitle') && !this.get('titleLengthValid')) return true;
 
     // Need at least one user when sending a private message
-    if (this.get('creatingPrivateMessage') && (this.get('targetUsernames').trim() + ',').indexOf(',') === 0) return true;
+    if ( this.get('creatingPrivateMessage') &&
+         this.get('targetUsernames') &&
+        (this.get('targetUsernames').trim() + ',').indexOf(',') === 0) {
+      return true;
+    }
 
     // reply is always required
     if (this.get('replyLength') < Discourse.SiteSettings.min_post_length) return true;
 
-    if (!Discourse.SiteSettings.allow_uncategorized_topics && !this.get('categoryName')) return true;
+    if (this.get('canCategorize') && !Discourse.SiteSettings.allow_uncategorized_topics && !this.get('categoryName')) return true;
 
     return false;
   }.property('loading', 'editTitle', 'titleLength', 'targetUsernames', 'replyLength', 'categoryName'),
+
+  titleLengthValid: function() {
+    if (this.get('creatingPrivateMessage')) {
+      if (this.get('titleLength') < Discourse.SiteSettings.min_private_message_title_length) return false;
+    } else {
+      if (this.get('titleLength') < Discourse.SiteSettings.min_topic_title_length) return false;
+    }
+    return (this.get('titleLength') <= Discourse.SiteSettings.max_topic_title_length);
+  }.property('titleLength'),
 
   // The text for the save button
   saveText: function() {
@@ -340,7 +356,7 @@ Discourse.Composer = Discourse.Model.extend({
   createPost: function(opts) {
     var post = this.get('post'),
         topic = this.get('topic'),
-        currentUser = Discourse.get('currentUser'),
+        currentUser = Discourse.User.current(),
         addedToStream = false;
 
     // The post number we'll probably get from the server
@@ -384,7 +400,7 @@ Discourse.Composer = Discourse.Model.extend({
       // Update last post
       topic.set('last_posted_at', new Date());
       topic.set('highest_post_number', createdPost.get('post_number'));
-      topic.set('last_poster', Discourse.get('currentUser'));
+      topic.set('last_poster', Discourse.User.current());
       topic.set('filtered_posts_count', topic.get('filtered_posts_count') + 1);
 
       // Set the topic view for the new post
@@ -479,7 +495,7 @@ Discourse.Composer = Discourse.Model.extend({
 
   flashDraftStatusForNewUser: function() {
     var $draftStatus = $('#draft-status');
-    if (Discourse.get('currentUser.trust_level') === 0) {
+    if (Discourse.User.current('trust_level') === 0) {
       $draftStatus.toggleClass('flash', true);
       setTimeout(function() { $draftStatus.removeClass('flash'); }, 250);
     }
@@ -515,7 +531,11 @@ Discourse.Composer = Discourse.Model.extend({
     @property missingTitleCharacters
   **/
   missingTitleCharacters: function() {
-    return Discourse.SiteSettings.min_topic_title_length - this.get('titleLength');
+    if (this.get('creatingPrivateMessage')) {
+      return Discourse.SiteSettings.min_private_message_title_length - this.get('titleLength');
+    } else {
+      return Discourse.SiteSettings.min_topic_title_length - this.get('titleLength');
+    }
   }.property('titleLength'),
 
 

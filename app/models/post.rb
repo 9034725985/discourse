@@ -4,6 +4,7 @@ require_dependency 'rate_limiter'
 require_dependency 'post_revisor'
 require_dependency 'enum'
 require_dependency 'trashable'
+require_dependency 'post_analyzer'
 
 require 'archetype'
 require 'digest/sha1'
@@ -48,7 +49,7 @@ class Post < ActiveRecord::Base
   scope :with_topic_subtype, ->(subtype) { joins(:topic).where('topics.subtype = ?', subtype) }
 
   def self.hidden_reasons
-    @hidden_reasons ||= Enum.new(:flag_threshold_reached, :flag_threshold_reached_again)
+    @hidden_reasons ||= Enum.new(:flag_threshold_reached, :flag_threshold_reached_again, :new_user_spam_threshold_reached)
   end
 
   def self.types
@@ -88,11 +89,6 @@ class Post < ActiveRecord::Base
     Digest::SHA1.hexdigest(raw.gsub(/\s+/, "").downcase)
   end
 
-  def cooked_document
-    self.cooked ||= cook(raw, topic_id: topic_id)
-    @cooked_document ||= Nokogiri::HTML.fragment(cooked)
-  end
-
   def reset_cooked
     @cooked_document = nil
     self.cooked = nil
@@ -102,41 +98,20 @@ class Post < ActiveRecord::Base
     @white_listed_image_classes ||= ['avatar', 'favicon', 'thumbnail']
   end
 
-  # How many images are present in the post
-  def image_count
-    return 0 unless raw.present?
-
-    cooked_document.search("img").reject do |t|
-      dom_class = t["class"]
-      if dom_class
-        (Post.white_listed_image_classes & dom_class.split(" ")).count > 0
-      end
-    end.count
+  def post_analyzer
+    @post_analyzer = PostAnalyzer.new(raw, topic_id)
   end
 
-  # Returns an array of all links in a post
-  def raw_links
-    return [] unless raw.present?
-
-    return @raw_links if @raw_links.present?
-
-    # Don't include @mentions in the link count
-    @raw_links = []
-    cooked_document.search("a[href]").each do |l|
-      html_class = l.attributes['class']
-      url = l.attributes['href'].to_s
-      if html_class.present?
-        next if html_class.to_s == 'mention' && l.attributes['href'].to_s =~ /^\/users\//
-      end
-      @raw_links << url
+  %w{raw_mentions linked_hosts image_count link_count raw_links}.each do |attr|
+    define_method(attr) do
+      PostAnalyzer.new(raw, topic_id).send(attr)
     end
-    @raw_links
   end
 
-  # How many links are present in the post
-  def link_count
-    raw_links.size
+  def cook(*args)
+    PostAnalyzer.new(raw, topic_id).cook(*args)
   end
+
 
   # Sometimes the post is being edited by someone else, for example, a mod.
   # If that's the case, they should not be bound by the original poster's
@@ -168,22 +143,6 @@ class Post < ActiveRecord::Base
     add_error_if_count_exceeded(:too_many_links, link_count, SiteSetting.newuser_max_links) unless acting_user_is_trusted?
   end
 
-
-  # Count how many hosts are linked in the post
-  def linked_hosts
-    return {} if raw_links.blank?
-
-    return @linked_hosts if @linked_hosts.present?
-
-    @linked_hosts = {}
-    raw_links.each do |u|
-      uri = URI.parse(u)
-      host = uri.host
-      @linked_hosts[host] ||= 1
-    end
-    @linked_hosts
-  end
-
   def total_hosts_usage
     hosts = linked_hosts.clone
 
@@ -206,23 +165,6 @@ class Post < ActiveRecord::Base
     end
 
     false
-  end
-
-
-  def raw_mentions
-    return [] if raw.blank?
-
-    # We don't count mentions in quotes
-    return @raw_mentions if @raw_mentions.present?
-    raw_stripped = raw.gsub(/\[quote=(.*)\]([^\[]*?)\[\/quote\]/im, '')
-
-    # Strip pre and code tags
-    doc = Nokogiri::HTML.fragment(raw_stripped)
-    doc.search("pre").remove
-    doc.search("code").remove
-
-    results = doc.to_html.scan(PrettyText.mention_matcher)
-    @raw_mentions = results.uniq.map { |un| un.first.downcase.gsub!(/^@/, '') }
   end
 
   def archetype
@@ -290,20 +232,6 @@ class Post < ActiveRecord::Base
     Post.excerpt(cooked, maxlength, options)
   end
 
-  # What we use to cook posts
-  def cook(*args)
-    cooked = PrettyText.cook(*args)
-
-    # If we have any of the oneboxes in the cache, throw them in right away, don't
-    # wait for the post processor.
-    dirty = false
-    result = Oneboxer.apply(cooked) do |url, elem|
-      Oneboxer.render_from_cache(url)
-    end
-
-    cooked = result.to_html if result.changed?
-    cooked
-  end
 
   # A list of versions including the initial version
   def all_versions
@@ -315,6 +243,10 @@ class Post < ActiveRecord::Base
       end
     end
     result
+  end
+
+  def is_first_post?
+    post_number == 1
   end
 
   def is_flagged?
@@ -377,6 +309,8 @@ class Post < ActiveRecord::Base
   # TODO: Move some of this into an asynchronous job?
   # TODO: Move into PostCreator
   after_create do
+
+    Rails.logger.info (">" * 30) + "#{no_bump} #{created_at}"
     # Update attributes on the topic - featured users and last posted.
     attrs = {last_posted_at: created_at, last_post_user_id: user_id}
     attrs[:bumped_at] = created_at unless no_bump

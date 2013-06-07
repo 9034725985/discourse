@@ -10,18 +10,12 @@ Discourse.Category = Discourse.Model.extend({
 
   init: function() {
     this._super();
-    if (!this.get('id') && this.get('name')) {
-      this.set('is_uncategorized', true);
-      if (!this.get('color'))      this.set('color',      Discourse.SiteSettings.uncategorized_color);
-      if (!this.get('text_color')) this.set('text_color', Discourse.SiteSettings.uncategorized_text_color);
-    }
-
     this.set("availableGroups", Em.A(this.get("available_groups")));
     this.set("groups", Em.A(this.groups));
   },
 
   searchContext: function() {
-    return ({ type: 'category', id: this.get('id') });
+    return ({ type: 'category', id: this.get('id'), category: this });
   }.property('id'),
 
   url: function() {
@@ -74,6 +68,27 @@ Discourse.Category = Discourse.Model.extend({
 });
 
 Discourse.Category.reopenClass({
+
+  uncategorizedInstance: function() {
+    if (this.uncategorized) return this.uncategorized;
+
+    this.uncategorized = this.create({
+      slug: 'uncategorized',
+      name: Discourse.SiteSettings.uncategorized_name,
+      isUncategorized: true,
+      color: Discourse.SiteSettings.uncategorized_color,
+      text_color: Discourse.SiteSettings.uncategorized_text_color
+    });
+    return this.uncategorized;
+  },
+
+  slugFor: function(category) {
+    if (!category) return "";
+    var id = Em.get(category, 'id');
+    var slug = Em.get(category, 'slug');
+    if ((!slug) || slug.isBlank()) return "" + id + "-category";
+    return slug;
+  },
 
   list: function() {
     return Discourse.Site.instance().get('categories');

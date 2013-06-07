@@ -107,29 +107,6 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
     this.toggleProperty('summaryCollapsed');
   },
 
-  splitTopic: function() {
-    var modalController = this.get('controllers.modal');
-    if (!modalController) return;
-
-    modalController.show(Discourse.SplitTopicView.create({
-      topicController: this,
-      topic: this.get('content'),
-      selectedPosts: this.get('selectedPosts')
-    }));
-  },
-
-  mergeTopic: function() {
-    var modalController = this.get('controllers.modal');
-    if (!modalController) return;
-
-    modalController.show(Discourse.MergeTopicView.create({
-      topicController: this,
-      topic: this.get('content'),
-      allPostsSelected: this.get('allPostsSelected'),
-      selectedPosts: this.get('selectedPosts')
-    }));
-  },
-
   deleteSelected: function() {
     var topicController = this;
     bootbox.confirm(Em.String.i18n("post.delete.confirm", { count: this.get('selectedPostsCount')}), function(result) {
@@ -334,7 +311,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
   },
 
   /**
-    Clears the pin from a topic for the currentUser
+    Clears the pin from a topic for the currently logged in user
 
     @method clearPin
   **/
@@ -370,7 +347,6 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
       topic.set('highest_post_number', data.post_number);
       topic.set('last_poster', data.user);
       topic.set('last_posted_at', data.created_at);
-      Discourse.notifyTitle();
     });
   },
 
@@ -415,7 +391,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
   },
 
   toggleBookmark: function(post) {
-    if (!Discourse.get('currentUser')) {
+    if (!Discourse.User.current()) {
       alert(Em.String.i18n("bookmarks.not_bookmarked"));
       return;
     }
@@ -432,47 +408,6 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
     actionType.loadUsers();
   },
 
-  showPrivateInviteModal: function() {
-    var modal = Discourse.InvitePrivateModalView.create({
-      topic: this.get('content')
-    });
-
-    var modalController = this.get('controllers.modal');
-    if (modalController) {
-      modalController.show(modal);
-    }
-  },
-
-  showInviteModal: function() {
-    var modalController = this.get('controllers.modal');
-    if (modalController) {
-      modalController.show(Discourse.InviteModalView.create({
-        topic: this.get('content')
-      }));
-    }
-  },
-
-  // Clicked the flag button
-  showFlags: function(post) {
-    var modalController = this.get('controllers.modal');
-    if (modalController) {
-      modalController.show(Discourse.FlagView.create({
-        post: post,
-        controller: this
-      }));
-    }
-  },
-
-  showHistory: function(post) {
-    var modalController = this.get('controllers.modal');
-
-    if (modalController) {
-      modalController.show(Discourse.HistoryView.create({
-        originalPost: post
-      }));
-    }
-  },
-
   recoverPost: function(post) {
     post.set('deleted_at', null);
     post.recover();
@@ -480,7 +415,7 @@ Discourse.TopicController = Discourse.ObjectController.extend(Discourse.Selected
 
   deletePost: function(post) {
     // Moderators can delete posts. Regular users can only create a deleted at message.
-    if (Discourse.get('currentUser.staff')) {
+    if (Discourse.User.current('staff')) {
       post.set('deleted_at', new Date());
     } else {
       post.set('cooked', Discourse.Markdown.cook(Em.String.i18n("post.deleted_by_author")));

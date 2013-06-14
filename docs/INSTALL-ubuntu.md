@@ -108,7 +108,7 @@ If you instead want to use apache2 to serve the static pages:
     
     # Now activate them all
     
-    sudo a2nsite your-domain.com
+    sudo a2ensite your-domain.com
     sudo a2enmod passenger
     sudo service apache2 reload
     sudo service apache2 restart
@@ -284,6 +284,8 @@ Add the bluepill startup to crontab.
 Add the following line:
 
     @reboot RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ROOT=~/discourse RAILS_ENV=production NUM_WEBS=4 /home/discourse/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ~/discourse/config/discourse.pill
+
+Note: in case of RVM system-wide installation RVM will be located in `/usr/local/rvm` directory instead of `/home/discourse/.rvm`, so update the line above respectively.
 
 Congratulations! You've got Discourse installed and running!
 

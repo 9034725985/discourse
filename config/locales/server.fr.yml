@@ -394,7 +394,7 @@ fr:
     contact_email_missing: "Vous n'avez pas renseigné d'email de contact pour votre site. Merci de mettre à jour le <a href='/admin/site_settings'>paramètre de site</a> : contact_email."
     contact_email_invalid: "L'email de contact du site est invalide. Merci de mettre à jour le <a href='/admin/site_settings'>paramètre de site</a> : contact_email."
     title_nag: "Le titre de votre site est toujours à sa valeur par défaut. Merci de le modifier dans les <a href='/admin/site_settings'>paramètres du site</a>."
-    gmail_for_email_warning: "Votre site est configuré pour envoyer les emails en utilisant Gmail. <a href='http://support.google.com/a/bin/answer.py?hl=fr&answer=166852' target='_blank'>Gmail limite le nombre d'emails que vous pouvez envoyer</a>. Nous vous conseillons d'utiliser un autre service d'envoi d'emails afin d'assurer une meilleure délivrabilité."
+    consumer_email_warning: "Votre site est configuré pour envoyer les emails en utilisant Gmail. <a href='http://support.google.com/a/bin/answer.py?hl=fr&answer=166852' target='_blank'>Gmail limite le nombre d'emails que vous pouvez envoyer</a>. Nous vous conseillons d'utiliser un autre service d'envoi d'emails afin d'assurer une meilleure délivrabilité."
 
   content_types:
     education_new_reply:
@@ -442,10 +442,6 @@ fr:
     queue_jobs: "mettre les différents jobs en attente sur différentes queues, si false les queues sont en file"
     crawl_images: "permettre la récupération des images provenant de sources tierces"
     ninja_edit_window: "temps d'édition avant de sauvegarder une nouvelle version, en secondes."
-    enable_imgur: "utiliser l'envoi des images avec l'API imgur, ne pas stocker les fichiers localement"
-    imgur_client_id: "Votre ID client imgur.com. Requis pour que l'envoi d'images fonctionne."
-    imgur_client_secret: "Votre secret imgur.com. Pas nécessaire pour que l'envoi d'image fonctionne, mais pourrais le devenir."
-    imgur_endpoint: "point d'arrêt pour le chargement d'images sur imgur.com"
     max_image_width: "largeur maximale des images d'un message"
     category_featured_topics: "nombre de discussions affichées dans la liste par catégories"
     add_rel_nofollow_to_user_content: "Ajouter rel nofollow à tous les contenus des utilisateurs, sauf les liens internes (incluant les domaines parents) Modifier ceci requiert une mise à jour de tout votre markdown (<code>rake posts:rebake</code>)"
@@ -784,19 +780,6 @@ fr:
         - Pour effectuer une recherche, visiter votre profil, ou naviguer, cliquez sur les icônes en haut à droite.
 
         - Pendant que vous lisez une discussion, vous pouvez retourner au début en cliquant sur son titre situé en haut de l'écran. Pour atteindre la *fin*, cliquez sur la flèche vers le bas sur l'indiquateur de progression en bas de la page, ou cliquez sur le champ "dernier message" dans le résumé de la discussion, sous le premier message.
-
-    welcome_approved:
-      subject_template: "Vous avez été accepté sur %{site_name} !"
-      text_body_template: |
-        Félicitations !
-
-        Vous avez été accepté pour rejoindre %{site_name}, bienvenue sur notre forum de discussions.
-
-        %{new_user_tips}
-
-        Nous croyons au [comportement communautaire civilisé](%{base_url}/faq) en tous temps.
-
-        Amusez-vous bien !
 
     welcome_user:
       subject_template: "Bienvenue sur %{site_name} !"

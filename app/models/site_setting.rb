@@ -29,6 +29,7 @@ class SiteSetting < ActiveRecord::Base
   client_setting(:polling_interval, 3000)
   client_setting(:anon_polling_interval, 30000)
   client_setting(:min_post_length, Rails.env.test? ? 5 : 20)
+  client_setting(:min_private_message_post_length, Rails.env.test? ? 5 : 10)
   client_setting(:max_post_length, 16000)
   client_setting(:min_topic_title_length, 15)
   client_setting(:max_topic_title_length, 255)
@@ -69,9 +70,6 @@ class SiteSetting < ActiveRecord::Base
   setting(:access_password)
   setting(:queue_jobs, !Rails.env.test?)
   setting(:crawl_images, !Rails.env.test?)
-  setting(:enable_imgur, false)
-  setting(:imgur_client_id, '')
-  setting(:imgur_endpoint, "https://api.imgur.com/3/image.json")
   setting(:max_image_width, 690)
   client_setting(:category_featured_topics, 6)
   setting(:topics_per_page, 30)
@@ -79,7 +77,8 @@ class SiteSetting < ActiveRecord::Base
   setting(:invite_expiry_days, 14)
   setting(:active_user_rate_limit_secs, 60)
   setting(:previous_visit_timeout_hours, 1)
-  setting(:favicon_url, '/assets/default-favicon.png')
+  client_setting(:favicon_url, '/assets/default-favicon.ico')
+  client_setting(:dynamic_favicon, false)
   setting(:apple_touch_icon_url, '/assets/default-apple-touch-icon.png')
 
   setting(:ninja_edit_window, 5.minutes.to_i)
@@ -163,11 +162,11 @@ class SiteSetting < ActiveRecord::Base
 
   setting(:enforce_global_nicknames, true)
   setting(:discourse_org_access_key, '')
-  
+
   setting(:enable_s3_uploads, false)
   setting(:s3_access_key_id, '')
   setting(:s3_secret_access_key, '')
-  setting(:s3_region, '')
+  setting(:s3_region, '', enum: 'S3RegionSiteSetting')
   setting(:s3_upload_bucket, '')
 
   setting(:default_trust_level, 0)
@@ -189,6 +188,10 @@ class SiteSetting < ActiveRecord::Base
   setting(:regular_requires_likes_given, 1)
   setting(:regular_requires_topic_reply_count, 3)
 
+  # Reply by Email Settings
+  setting(:reply_by_email_enabled, false)
+  setting(:reply_by_email_address, nil)
+
   # Entropy checks
   setting(:title_min_entropy, 10)
   setting(:body_min_entropy, 7)
@@ -202,7 +205,7 @@ class SiteSetting < ActiveRecord::Base
   setting(:title_fancy_entities, true)
 
   # The default locale for the site
-  setting(:default_locale, 'en')
+  setting(:default_locale, 'en', enum: 'LocaleSiteSetting')
 
   client_setting(:educate_until_posts, 2)
 
@@ -238,9 +241,13 @@ class SiteSetting < ActiveRecord::Base
     min_post_length..max_post_length
   end
 
+  def self.private_message_post_length
+    min_private_message_post_length..max_post_length
+  end
+
   def self.homepage
     # TODO objectify this
-    x = top_menu.split('|')[0].split(',')[0]
+    top_menu.split('|')[0].split(',')[0]
   end
 
   def self.anonymous_homepage

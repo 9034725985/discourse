@@ -462,10 +462,6 @@ cs:
     queue_jobs: "Zařazovat úlohy do fronty v sidekiq, není-li nastaveno, jsou úlohy vyřizovány okamžitě"
     crawl_images: "Povolit získávání obrázků z webů třetích stran"
     ninja_edit_window: "Jak rychle smíte udělat změnu, aniž by se uložila jako nová verze"
-    enable_imgur: "Používat imgur pro ukládání obrázků, nehostovat obrázky lokálně"
-    imgur_client_id: "Přístupový klíč 'client ID' pro imgur.com - vyžadováno pro upload obrázků"
-    imgur_client_secret: "Přístupový klíč 'client secret' pro imgur.com - vyžadováno pro upload obrázků"
-    imgur_endpoint: "Koncový bod pro upload obrázků na imgur.com"
     max_image_width: "Maximální šířka obrázku v příspěvku"
     category_featured_topics: "Počet témat zobrazených v seznamu kategorií"
     add_rel_nofollow_to_user_content: "Přidávat 'rel nofollow' do uživatelského obsahu, mimo interních odkazů (včetně nadřazené domény) změna tohoto nastavení vyžaduje přegenerování všech MarkDownových textů"
@@ -799,19 +795,6 @@ cs:
         - Pro hledání, zobrazení vaší uživatelské stránky nebo jinou navigaci použijte ikony vpravo nahoře.
 
         - Během čtení nějakého tématu se můžete kliknutím na název tématu v horní části stránky vrátit na začátek tématu. Chcete-li naopak skočit na *konec* tématu, klikněte na šipku dolů v indikátoru pozice v dolní části stránky, nebo klikněte na odkaz 'poslední příspěvek' v souhrnu tématu u prvního příspěvku.
-
-    welcome_approved:
-      subject_template: "Byl jste schválen na %{site_name}!"
-      text_body_template: |
-        Gratulujeme!
-
-        Váš účet byl schválen a můžete se připojit na %{site_name}, vítejte na našem diskuzním fóru!
-
-        %{new_user_tips}
-
-        Věříme v [civilizované komunitní chování](%{base_url}/faq) za všech okolností.
-
-        Užijte si naše fórum!
 
     welcome_user:
       subject_template: "Vítejte na %{site_name}!"

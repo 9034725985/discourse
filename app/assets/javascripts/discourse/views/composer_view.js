@@ -53,8 +53,8 @@ Discourse.ComposerView = Discourse.View.extend({
         // if the caret is on the last line ensure preview scrolled to bottom
         caretPosition = Discourse.Utilities.caretPosition(_this.wmdInput[0]);
         if (!_this.wmdInput.val().substring(caretPosition).match(/\n/)) {
-          $wmdPreview = $('#wmd-preview:visible');
-          if ($wmdPreview.length > 0) {
+          $wmdPreview = $('#wmd-preview');
+          if ($wmdPreview.is(':visible')) {
             return $wmdPreview.scrollTop($wmdPreview[0].scrollHeight);
           }
         }
@@ -260,7 +260,7 @@ Discourse.ComposerView = Discourse.View.extend({
     // send - this event is triggered when the upload request is about to start
     $uploadTarget.on('fileuploadsend', function (e, data) {
       // hide the "image selector" modal
-      $('#discourse-modal').modal('hide');
+      _this.get('controller').send('closeModal');
       // cf. https://github.com/blueimp/jQuery-File-Upload/wiki/API#how-to-cancel-an-upload
       var jqXHR = data.xhr();
       // need to wait for the link to show up in the DOM

@@ -39,14 +39,21 @@ Discourse = Ember.Application.createWithMixins({
     even though our path formats are slightly different than what ember prefers.
   */
   resolver: Ember.DefaultResolver.extend({
+
     resolveTemplate: function(parsedName) {
       var resolvedTemplate = this._super(parsedName);
+      if (resolvedTemplate) { return resolvedTemplate; }
+
+      var decamelized = parsedName.fullNameWithoutType.decamelize();
+
+      // See if we can find it with slashes instead of underscores
+      var slashed = decamelized.replace("_", "/");
+      resolvedTemplate = Ember.TEMPLATES[slashed];
       if (resolvedTemplate) { return resolvedTemplate; }
 
       // If we can't find a template, check to see if it's similar to how discourse
       // lays out templates like: adminEmail => admin/templates/email
       if (parsedName.fullNameWithoutType.indexOf('admin') === 0) {
-        var decamelized = parsedName.fullNameWithoutType.decamelize();
         decamelized = decamelized.replace(/^admin\_/, 'admin/templates/');
         decamelized = decamelized.replace(/^admin\./, 'admin/templates/');
         decamelized = decamelized.replace(/\./, '_');
@@ -68,7 +75,7 @@ Discourse = Ember.Application.createWithMixins({
     $('title').text(title);
 
     var notifyCount = this.get('notifyCount');
-    if (notifyCount > 0) {
+    if (notifyCount > 0 && !Discourse.SiteSettings.dynamic_favicon) {
       title = "(" + notifyCount + ") " + title;
     }
     // chrome bug workaround see: http://stackoverflow.com/questions/2952384/changing-the-window-title-when-focussing-the-window-doesnt-work-in-chrome
@@ -77,6 +84,14 @@ Discourse = Ember.Application.createWithMixins({
       document.title = title;
     }, 200);
   }.observes('title', 'hasFocus', 'notifyCount'),
+
+  faviconChanged: function() {
+    if(Discourse.SiteSettings.dynamic_favicon) {
+      $.faviconNotify(
+        Discourse.SiteSettings.favicon_url, this.get('notifyCount')
+      );
+    }
+  }.observes('notifyCount'),
 
   // The classes of buttons to show on a post
   postButtons: function() {
@@ -210,6 +225,7 @@ Discourse = Ember.Application.createWithMixins({
   ajax: function() {
 
     var url, args;
+
     if (arguments.length === 1) {
       if (typeof arguments[0] === "string") {
         url = arguments[0];
@@ -229,6 +245,14 @@ Discourse = Ember.Application.createWithMixins({
     }
     if (args.error) {
       console.warning("DEPRECATION: Discourse.ajax should use promises, received 'error' callback");
+    }
+
+    // If we have URL_FIXTURES, load from there instead (testing)
+    var fixture = Discourse.URL_FIXTURES && Discourse.URL_FIXTURES[url];
+    if (fixture) {
+      return Ember.Deferred.promise(function(promise) {
+        promise.resolve(fixture);
+      })
     }
 
     return Ember.Deferred.promise(function (promise) {
@@ -279,7 +303,7 @@ Discourse = Ember.Application.createWithMixins({
 
       bus.subscribe("/categories", function(data){
         var site = Discourse.Site.instance();
-        data.categories.each(function(c){
+        _.each(data.categories,function(c){
           site.updateCategory(c)
         });
       });

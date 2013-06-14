@@ -29,7 +29,7 @@ class TopicsController < ApplicationController
     begin
       @topic_view = TopicView.new(params[:id] || params[:topic_id], current_user, opts)
     rescue Discourse::NotFound
-      topic = Topic.where(slug: params[:id]).first
+      topic = Topic.where(slug: params[:id]).first if params[:id]
       raise Discourse::NotFound unless topic
       return redirect_to(topic.relative_url)
     end
@@ -84,7 +84,7 @@ class TopicsController < ApplicationController
     raise Discourse::InvalidParameters.new(:title) if title.length < SiteSetting.min_title_similar_length
     raise Discourse::InvalidParameters.new(:raw) if raw.length < SiteSetting.min_body_similar_length
 
-    topics = Topic.similar_to(title, raw)
+    topics = Topic.similar_to(title, raw, current_user)
     render_serialized(topics, BasicTopicSerializer)
   end
 

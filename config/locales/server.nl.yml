@@ -52,6 +52,7 @@ nl:
   rss_posts_in_topic: "RSS feed van '%{topic}'"
   rss_topics_in_category: "RSS fees van topics in de categorie '%{category}'"
   author_wrote: "%{author} schreef:"
+  private_message_abbrev: PB
 
   groups:
     default_names:
@@ -390,7 +391,7 @@ nl:
     contact_email_missing: "Je hebt nog geen contactadres opgegeven voor je site. Werk contact_email bij in de <a href='/admin/site_settings'>Instellingen</a>."
     contact_email_invalid: "Je hebt een ongeldig contactadres opgegeven voor je site. Werk contact_email bij in de <a href='/admin/site_settings'>Instellingen</a>."
     title_nag: "Je hebt nog geen title ingesteld voor je site. Geef een titel voor je site op in de <a href='/admin/site_settings'>Instellingen</a>."
-    gmail_for_email_warning: "Je site is ingesteld om Gmail te gebruiken voor het versturen van mails. <a href='http://support.google.com/a/bin/answer.py?hl=en&answer=166852' target='_blank'>Gmail heeft limieten voor het aantal mails dat je kan versturen</a>. Overweeg om een andere e-mailprovider te gebruiken om er zeker van te zijn dat mails aankomen."
+    consumer_email_warning: "Je site is ingesteld om Gmail te gebruiken voor het versturen van mails. <a href='http://support.google.com/a/bin/answer.py?hl=en&answer=166852' target='_blank'>Gmail heeft limieten voor het aantal mails dat je kan versturen</a>. Overweeg om een andere e-mailprovider te gebruiken om er zeker van te zijn dat mails aankomen."
 
   content_types:
     education_new_reply:
@@ -444,10 +445,6 @@ nl:
     queue_jobs: "Zet verschillende taken in een queue binnen sidekiq, bij 'false' worden taken ineens uitgevoerd"
     crawl_images: Zet het ophalen van afbeeldingen van externe bronnen aan
     ninja_edit_window: "Hoe snel je een aanpassing kan maken zonder dat er een nieuwe versie wordt opgeslagen, in seconden."
-    enable_imgur: "Gebruik de imgur API voor uploads en sla afbeeldingen niet lokaal op"
-    imgur_client_id: "Je imgur.com client ID, nodig om afbeeldingen te kunnen uploaden naar imgur" 
-    imgur_client_secret: "Je imgur.com client secret. Is nog niet nodig voor het uploaden van afbeeldingen, maar dat zou in de toekomst kunnen veranderen." 
-    imgur_endpoint: "End point voor het uploaden van imgur.com-afbeeldingen"
     max_image_width: Maximale breedte voor een afbeelding in een bericht
     category_featured_topics: Aantal topics dat wordt weergegeven in de categorielijst
     add_rel_nofollow_to_user_content: "Voeg 'rel nofollow' toe aan alle leden-content behalve voor interne links (inclusief parent domeinen). NB: Als je dit verandert, moet je ook alle 'baked markdown' updaten"
@@ -583,8 +580,8 @@ nl:
     email_time_window_mins: "Hoeveel minuten we wachten met het sturen van een e-mail naar een persoon, om ze een kans te geven het eerst op de site te kunnen lezen."
     flush_timings_secs: "Hoe vaak we timing-data naar de server sturen, in seconden."
     max_word_length: "De maximumlengte van een woord in een topictitel"
-    title_min_entropy: "De minimale entropie die een topictitel moet bevatten"
-    body_min_entropy: "De minimale entropie die de inhoud van een post moet bevatten"
+    title_min_entropy: "De minimale entropie (unieke tekens) die een topictitel moet bevatten"
+    body_min_entropy: "De minimale entropie (unieke tekens) die de inhoud van een post moet bevatten"
 
     title_fancy_entities: "Converteer algemene ASCII-tekens naar fancy HTML in topictitels, zoals SmartyPants (http://daringfireball.net/projects/smartypants)"
 
@@ -790,19 +787,6 @@ nl:
         - Mocht je iets willen opzoeken, naar je gebruikerspagina gaan, of ergens anders naar toe willen navigeren, klik dan op de icoontjes in de rechter bovenhoek.
 
         - Wanneer je een topic leest, kan je naar boven scrollen (↑) door op de topictitel bovenaan de pagina te klikken. Om de *onderkant* (↓) te bereiken klik je op de pijl naar beneden aan de onderkant van de pagina of je klikt op het Laatste Post-veld in de topicsamenvatting onder het eerste bericht.
-
-    welcome_approved:
-      subject_template: "Je aanmelding voor %{site_name} is goedgekeurd!"
-      text_body_template: |
-        Gefeliciteerd!
-
-        Je aanvraag om lid te worden van %{site_name} is goedgekeurd, welkom op ons discussieforum!
-
-        %{new_user_tips}
-
-        We geloven altijd in [beschaafd gemeenschappelijk gedrag](%{base_url}/faq).
-
-        Geniet van je verblijf!
 
     welcome_user:
       subject_template: "Welkom bij %{site_name}!"

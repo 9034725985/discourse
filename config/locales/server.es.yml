@@ -298,9 +298,6 @@ es:
     queue_jobs: "Encolar varios trabajos en sidekiq, si es falso las colas serán en linea"
     crawl_images: "Activar obtener imágenes de origines third party para insertar las dimensiones de ancho y alto"
     ninja_edit_window: "Número de segundos after postear donde las ediciones no causan una nueva versión"
-    enable_imgur: "Activar imgur api para subidas, no almacenes ficheros localmente"
-    imgur_api_key: "Tu imgur.com api key, requerida para la función de subida de imágenes"
-    imgur_endpoint: "End point para la subida de imagenes de imgur.com"
     max_image_width: "Máximo ancho permitido en las imágenes de un post"
     category_featured_topics: "Número de topics mostrados por categoría en la página /categories"
     add_rel_nofollow_to_user_content: "Añadir rel nofollow a todo el contenido subido por usuarios, exceptuando los links internos (incluyendo dominios padres) changing this requires you update all your baked markdown"
@@ -617,19 +614,6 @@ es:
         - Para búsquedas, ver tu página de usuario o el mapa del sitio, haz click en los iconos en la esquina superior derecha.
 
         - Mientras lees un topic, vuelve a lo más alto ↑ haciendo click en su título arriba de la página. Para alcanzar el *final* ↓, haz click en la flecha hacia abajo del indicador de prograso del topic al final de la página, or click the last post field on the topic summary under the first post.
-
-    welcome_approved:
-      subject_template: "¡Has sido aprobado en %{site_name}!"
-      text_body_template: |
-        ¡Enhorabuena!
-
-        Has sido aprobado para unirte a %{site_name}, ¡Bienvenido a nuestro foro de discusión!
-
-        %{new_user_tips}
-
-        Creemos en [civilized community behavior](%{base_url}/faq) siempre.
-
-        ¡Disfruta tu estancia!
 
     welcome_user:
       subject_template: "Bienvenido a %{site_name}!"

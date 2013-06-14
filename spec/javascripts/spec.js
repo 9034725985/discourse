@@ -1,3 +1,4 @@
+
 //= require env
 
 //= require ../../app/assets/javascripts/preload_store.js
@@ -9,21 +10,21 @@
 //= require ../../app/assets/javascripts/external/jquery-1.9.1.js
 
 //= require ../../app/assets/javascripts/external/jquery.ui.widget.js
-//= require ../../app/assets/javascripts/external/handlebars-1.0.rc.3.js
+//= require ../../app/assets/javascripts/external/handlebars-1.0.rc.4.js
 //= require ../../app/assets/javascripts/external_production/ember.js
-//= require ../../app/assets/javascripts/external_production/sugar-1.3.5.js
 //= require ../../app/assets/javascripts/external_production/group-helper.js
 
+//= require ../../app/assets/javascripts/locales/i18n
+//= require ../../app/assets/javascripts/locales/date_locales.js
+//= require ../../app/assets/javascripts/discourse/helpers/i18n_helpers
+//= require ../../app/assets/javascripts/locales/en
+//
 // Pagedown customizations
 //= require ../../app/assets/javascripts/pagedown_custom.js
 
 // The rest of the externals
 //= require_tree ../../app/assets/javascripts/external
 
-//= require ../../app/assets/javascripts/locales/i18n
-//= require ../../app/assets/javascripts/locales/date_locales.js
-//= require ../../app/assets/javascripts/discourse/helpers/i18n_helpers
-//= require ../../app/assets/javascripts/locales/en
 //= require ../../app/assets/javascripts/discourse
 
 // Stuff we need to load first

@@ -1,12 +1,13 @@
 require 'digest/sha1'
 require 'image_sizer'
-require 'imgur'
 require 's3'
 require 'local_store'
 
 class Upload < ActiveRecord::Base
   belongs_to :user
   belongs_to :topic
+
+  has_and_belongs_to_many :post
 
   validates_presence_of :filesize
   validates_presence_of :original_filename
@@ -39,7 +40,6 @@ class Upload < ActiveRecord::Base
   end
 
   def self.store_file(file, image_info, upload_id)
-    return Imgur.store_file(file, image_info, upload_id) if SiteSetting.enable_imgur?
     return S3.store_file(file, image_info, upload_id)    if SiteSetting.enable_s3_uploads?
     return LocalStore.store_file(file, image_info, upload_id)
   end

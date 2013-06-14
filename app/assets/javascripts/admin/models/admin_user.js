@@ -76,9 +76,9 @@ Discourse.AdminUser = Discourse.User.extend({
   }).property('admin', 'moderator'),
 
   banDuration: (function() {
-    var banned_at = Date.create(this.banned_at);
-    var banned_till = Date.create(this.banned_till);
-    return banned_at.short() + " - " + banned_till.short();
+    var banned_at = moment(this.banned_at);
+    var banned_till = moment(this.banned_till);
+    return banned_at.format('L') + " - " + banned_till.format('L');
   }).property('banned_till', 'banned_at'),
 
   ban: function() {
@@ -216,6 +216,17 @@ Discourse.AdminUser = Discourse.User.extend({
         });
       }
     });
+  },
+
+  loadDetails: function() {
+    var model = this;
+    if (model.get('loadedDetails')) { return; }
+
+    Discourse.AdminUser.find(model.get('username_lower')).then(function (result) {
+      console.log("loaded details");
+      model.setProperties(result);
+      model.set('loadedDetails', true);
+    });
   }
 
 });
@@ -228,6 +239,9 @@ Discourse.AdminUser.reopenClass({
       user.set('can_approve', false);
       return user.set('selected', false);
     });
+
+    bootbox.alert(Em.String.i18n("admin.user.approve_bulk_success"));
+
     return Discourse.ajax("/admin/users/approve-bulk", {
       type: 'PUT',
       data: {
@@ -240,6 +254,7 @@ Discourse.AdminUser.reopenClass({
 
   find: function(username) {
     return Discourse.ajax("/admin/users/" + username).then(function (result) {
+      result.loadedDetails = true;
       return Discourse.AdminUser.create(result);
     });
   },

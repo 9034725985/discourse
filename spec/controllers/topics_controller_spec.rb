@@ -162,8 +162,17 @@ describe TopicsController do
     end
 
     it "delegates to Topic.similar_to" do
-      Topic.expects(:similar_to).with(title, raw).returns([Fabricate(:topic)])
+      Topic.expects(:similar_to).with(title, raw, nil).returns([Fabricate(:topic)])
       xhr :get, :similar_to, title: title, raw: raw
+    end
+
+    context "logged in" do
+      let(:user) { log_in }
+
+      it "passes a user throught if logged in" do
+        Topic.expects(:similar_to).with(title, raw, user).returns([Fabricate(:topic)])
+        xhr :get, :similar_to, title: title, raw: raw
+      end
     end
 
   end
@@ -381,6 +390,23 @@ describe TopicsController do
     it 'returns 404 when an invalid slug is given and no id' do
       xhr :get, :show, id: 'nope-nope'
       expect(response.status).to eq(404)
+    end
+
+    it 'returns a 404 when slug and topic id do not match a topic' do
+      xhr :get, :show, topic_id: 123123, slug: 'topic-that-is-made-up'
+      expect(response.status).to eq(404)
+    end
+
+    context 'a topic with nil slug exists' do
+      before do
+        @nil_slug_topic = Fabricate(:topic)
+        Topic.connection.execute("update topics set slug=null where id = #{@nil_slug_topic.id}") # can't find a way to set slug column to null using the model
+      end
+
+      it 'returns a 404 when slug and topic id do not match a topic' do
+        xhr :get, :show, topic_id: 123123, slug: 'topic-that-is-made-up'
+        expect(response.status).to eq(404)
+      end
     end
 
     it 'records a view' do

@@ -5,6 +5,8 @@ describe Upload do
   it { should belong_to :user }
   it { should belong_to :topic }
 
+  it { should have_and_belong_to_many :post }
+
   it { should validate_presence_of :original_filename }
   it { should validate_presence_of :filesize }
 
@@ -37,18 +39,8 @@ describe Upload do
       end
     end
 
-    context "imgur" do
-      before(:each) do
-        SiteSetting.stubs(:enable_imgur?).returns(true)
-        Imgur.stubs(:store_file).returns(url)
-      end
-
-      it_behaves_like "upload"
-
-    end
-
     context "s3" do
-      before(:each) do 
+      before(:each) do
         SiteSetting.stubs(:enable_s3_uploads?).returns(true)
         S3.stubs(:store_file).returns(url)
       end

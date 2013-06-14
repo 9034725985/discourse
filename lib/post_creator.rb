@@ -38,8 +38,6 @@ class PostCreator
     @user = user
     @opts = opts
     @spam = false
-
-    raise Discourse::InvalidParameters.new(:raw) if @opts[:raw].blank?
   end
 
   # True if the post was considered spam
@@ -71,14 +69,43 @@ class PostCreator
       @post.save_reply_relationships
     end
 
+    if @spam
+      GroupMessage.create( Group[:moderators].name, :spam_post_blocked, {user: @user, limit_once_per: 24.hours} )
+    end
+
     enqueue_jobs
     @post
   end
 
-
-  # Shortcut
   def self.create(user, opts)
     PostCreator.new(user, opts).create
+  end
+
+  def self.before_create_tasks(post)
+    if post.reply_to_post_number.present?
+      post.reply_to_user_id ||= Post.select(:user_id).where(topic_id: post.topic_id, post_number: post.reply_to_post_number).first.try(:user_id)
+    end
+
+    post.post_number ||= Topic.next_post_number(post.topic_id, post.reply_to_post_number.present?)
+    post.cooked ||= post.cook(post.raw, topic_id: post.topic_id)
+    post.sort_order = post.post_number
+    DiscourseEvent.trigger(:before_create_post, post)
+    post.last_version_at ||= Time.now
+  end
+
+  def self.after_create_tasks(post)
+    Rails.logger.info (">" * 30) + "#{post.no_bump} #{post.created_at}"
+    # Update attributes on the topic - featured users and last posted.
+    attrs = {last_posted_at: post.created_at, last_post_user_id: post.user_id}
+    attrs[:bumped_at] = post.created_at unless post.no_bump
+    post.topic.update_attributes(attrs)
+
+    # Update topic user data
+    TopicUser.change(post.user,
+                     post.topic.id,
+                     posted: true,
+                     last_read_post_number: post.post_number,
+                     seen_post_count: post.post_number)
   end
 
   protected
@@ -133,8 +160,15 @@ class PostCreator
   def setup_topic
     if @opts[:topic_id].blank?
       topic_creator = TopicCreator.new(@user, guardian, @opts)
-      topic = topic_creator.create
-      @errors = topic_creator.errors
+
+      begin
+        topic = topic_creator.create
+        @errors = topic_creator.errors
+      rescue ActiveRecord::Rollback => ex
+        # In the event of a rollback, grab the errors from the topic
+        @errors = topic_creator.errors
+        raise ex
+      end
 
       @new_topic = true
     else
@@ -231,7 +265,6 @@ class PostCreator
 
   def enqueue_jobs
     if @post && !@post.errors.present?
-
       # We need to enqueue jobs after the transaction. Otherwise they might begin before the data has
       # been comitted.
       topic_id = @opts[:topic_id] || @topic.try(:id)

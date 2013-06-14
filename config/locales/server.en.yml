@@ -5,6 +5,10 @@
 # http://yamllint.com/
 
 en:
+  dates:
+    short_date_no_year: "D MMM"
+    short_date: "D MMM, YYYY"
+    long_date: "MMMM D, YYYY h:mma"
   time:
     formats:
       short: "%m-%d-%Y"
@@ -49,6 +53,7 @@ en:
   rss_posts_in_topic: "RSS feed of '%{topic}'"
   rss_topics_in_category: "RSS feed of topics in the '%{category}' category"
   author_wrote: "%{author} wrote:"
+  private_message_abbrev: "PM"
 
   groups:
     default_names:
@@ -69,8 +74,6 @@ en:
     'new-topic': |
       Welcome to %{site_name} &mdash; **thanks for starting a new conversation!**
 
-      Keep in mind as you compose your topic:
-
       - Does the title accurately describe your topic? Does it sound interesting?
 
       - What is this about? Who would be interested in it? Why does it matter? What kind of responses are you hoping for from the community?
@@ -81,8 +84,6 @@ en:
 
     'new-reply': |
       Welcome to %{site_name} &mdash; **thanks for contributing to the conversation!**
-
-      Keep in mind as you compose your reply:
 
       - Does your reply improve the conversation in some way, however small?
 
@@ -387,7 +388,7 @@ en:
     contact_email_missing: "You haven't provided a contact email for your site. Please update contact_email in the <a href='/admin/site_settings'>Site Settings</a>."
     contact_email_invalid: "The site contact email is invalid. Please update contact_email in the <a href='/admin/site_settings'>Site Settings</a>."
     title_nag: "The title Site Setting is still set to the default value. Please update it with your site's title in the <a href='/admin/site_settings'>Site Settings</a>."
-    gmail_for_email_warning: "Your site is configured to use Gmail to send email. <a href='http://support.google.com/a/bin/answer.py?hl=en&answer=166852' target='_blank'>Gmail limits how many emails you can send</a>. Consider using an email service provider to ensure email deliverability."
+    consumer_email_warning: "Your site is configured to use Gmail (or another consumer email service) to send email. <a href='http://support.google.com/a/bin/answer.py?hl=en&answer=166852' target='_blank'>Gmail limits how many emails you can send</a>. Consider using an email service provider like mandrill.com to ensure email deliverability."
 
   content_types:
     education_new_reply:
@@ -421,6 +422,7 @@ en:
   site_settings:
     default_locale: "The default language of this Discourse instance (ISO 639-1 Code)"
     min_post_length: "Minimum post length in characters"
+    min_private_message_post_length: "Minimum post length in characters for private messages"
     max_post_length: "Maximum post length in characters"
     min_topic_title_length: "Minimum topic title length in characters"
     max_topic_title_length: "Maximum topic title length in characters"
@@ -442,10 +444,6 @@ en:
     queue_jobs: "Queue various jobs in sidekiq, if false queues are inline"
     crawl_images: "Enable retrieving images from third party sources to insert width and height dimensions"
     ninja_edit_window: "Number of seconds after posting where edits do not create a new version"
-    enable_imgur: "Enable imgur api for uploading, don't host files locally"
-    imgur_client_id: "Your imgur.com client ID, required for image upload to function"
-    imgur_client_secret: "Your imgur.com client secret. Not currently required for image upload to function, but may be at some point."
-    imgur_endpoint: "End point for uploading imgur.com images"
     max_image_width: "Maximum allowed width of images in a post"
     category_featured_topics: "Number of topics displayed per category in the /categories page"
     add_rel_nofollow_to_user_content: "Add rel nofollow to all submitted user content, except for internal links (including parent domains) changing this requires you update all your baked markdown (<code>rake posts:rebake</code>)"
@@ -459,6 +457,7 @@ en:
     logo_url: "The logo for your site eg: http://example.com/logo.png"
     logo_small_url: "The small logo for your site used when scrolling down on topics eg: http://example.com/logo-small.png"
     favicon_url: "A favicon for your site, see http://en.wikipedia.org/wiki/Favicon"
+    dynamic_favicon: "Show incoming message notifications on favicon"
     apple_touch_icon_url: "Icon used for Apple touch devices. Recommended size is 144px by 144px."
 
     notification_email: "The return email address used when sending system emails such as notifying users of lost passwords, new accounts etc"
@@ -589,8 +588,8 @@ en:
     email_time_window_mins: "How many minutes we wait before sending a user mail, to give them a chance to see it first"
     flush_timings_secs: "How frequently we flush timing data to the server, in seconds"
     max_word_length: "The maximum allowed word length, in characters, in a topic title"
-    title_min_entropy: "The minimum allowed entropy (unique characters) required for a topic title"
-    body_min_entropy: "The minimum allowed entropy (unique characters) required for a post body"
+    title_min_entropy: "The minimum allowed entropy (unique characters, non-english count for more) required for a topic title"
+    body_min_entropy: "The minimum allowed entropy (unique characters, non-english count for more) required for a post body"
 
     title_fancy_entities: "Convert common ASCII characters to fancy HTML entities in topic titles, ala SmartyPants http://daringfireball.net/projects/smartypants/"
 
@@ -612,6 +611,9 @@ en:
 
     newuser_spam_host_threshold: "How many times a new user can post a link to the same host within their `newuser_spam_host_posts` posts before being considered spam."
     staff_like_weight: "Extra weighting factor given to likes when performed by staff."
+
+    reply_by_email_enabled: "Whether this forum supports reply by email"
+    reply_by_email_address: "Template for reply by email address in form, for example: %{reply_key}@reply.myforum.com"
 
   notification_types:
     mentioned: "%{display_username} mentioned you in %{link}"
@@ -712,7 +714,9 @@ en:
 
       - Verify that your email server is *definitely* sending a fully-qualified hostname that resolves in DNS in its HELO message. If not, this will cause your email to be rejected by many mail services.
 
-       - Configure [DKIM email key signing][3] in your email software, and place the public DKIM key in your DNS records. This is not required, but will significantly improve email deliverability.
+      - Configure [DKIM email key signing][3] in your email software, and place the public DKIM key in your DNS records. This is not required, but will significantly improve email deliverability.
+
+      (The *easy* way is to [sign up for Mandrill][6], which has a generous free mailing plan and will be fine for small forums. You'll still need to set up the SPF and DKIM records in your DNS, though!)
 
       We hope you received this email deliverability test OK!
 
@@ -720,12 +724,15 @@ en:
 
       Your friends at [Discourse](http://www.discourse.org)
 
+      :smile:
+
       [0]: %{base_url}
       [1]: http://www.kitterman.com/spf/validate.html
       [2]: http://mxtoolbox.com/SuperTool.aspx
       [3]: http://www.dkim.org/
       [4]: http://whatismyipaddress.com/blacklist-check
       [5]: %{base_url}/unsubscribe
+      [6]: http://mandrill.com
 
       ----
 
@@ -797,19 +804,6 @@ en:
 
         - While reading a topic, move to the top ↑ by clicking its title at the top of the page. To reach the *bottom* ↓, click the down arrow on the topic progress indicator at the bottom of the page, or click the last post field on the topic summary under the first post.
 
-    welcome_approved:
-      subject_template: "You've been approved on %{site_name}!"
-      text_body_template: |
-        Congratulations!
-
-        You're approved to join %{site_name}, welcome to our discussion forum!
-
-        %{new_user_tips}
-
-        We believe in [civilized community behavior](%{base_url}/faq) at all times.
-
-        Enjoy your stay!
-
     welcome_user:
       subject_template: "Welcome to %{site_name}!"
       text_body_template: |
@@ -866,9 +860,16 @@ en:
     user_automatically_blocked:
       subject_template: "User %{username} was automatically blocked"
       text_body_template: |
-        This is an automated message to inform you that [%{username}](%{blocked_user_url}) has been automatically blocked because too many people submitted flags against %{username}'s post(s).
+        This is an automated message to inform you that [%{username}](%{user_url}) has been automatically blocked because too many people submitted flags against %{username}'s post(s).
 
-        Please [review the flags](/admin/flags). If %{username} should not be blocked from posting, click the unblock button on [the admin user page](%{blocked_user_url}).
+        Please [review the flags](/admin/flags). If %{username} should not be blocked from posting, click the unblock button on [the admin user page](%{user_url}).
+
+    spam_post_blocked:
+      subject_template: "Spam was detected in a post by %{username}"
+      text_body_template: |
+        This is an automated message to inform you that [%{username}](%{user_url}) tried to make a post with links, but it was stopped as spam based on the newuser_spam_host_threshold site setting.
+
+        Please [review the user](%{user_url}).
 
     unblocked:
       subject_template: "Account unblocked"
@@ -879,7 +880,7 @@ en:
 
         You can now create new replies and topics again.
 
-  unsubscribe_link: "If you'd like to unsubscribe from these emails, visit your [user preferences](%{user_preferences_url})."
+  unsubscribe_link: "To unsubscribe from these emails, visit your [user preferences](%{user_preferences_url})."
 
   user_notifications:
     unsubscribe:
@@ -938,11 +939,11 @@ en:
         Please visit this link to respond: %{base_url}%{url}
 
     digest:
-      why: "Here's a brief summary of what happened on %{site_link} since we last saw you on %{last_seen_at}."
+      why: "Here's a brief summary of the discussion on %{site_link} since we last saw you on %{last_seen_at}."
       subject_template: "[%{site_name}] Forum Activity for %{date}"
       new_activity: "New activity on your topics and posts:"
-      top_topics: "Content you might be interested in:"
-      unsubscribe: "This summary email is sent as a courtesy notification from %{site_link} when we haven't seen you in a while.\nIf you'd like to turn it off or change your email preferences, %{unsubscribe_link}."
+      top_topics: "Recent posts the community enjoyed:"
+      unsubscribe: "This summary email is sent as a courtesy notification from %{site_link} when we haven't seen you in a while.\nTo turn it off or change your email preferences, %{unsubscribe_link}."
       click_here: "click here"
       from: "%{site_name} digest"
       read_more: "Read More"
@@ -975,6 +976,24 @@ en:
 
         %{base_url}/users/authorize-email/%{email_token}
 
+    signup_after_approval:
+      subject_template: "You've been approved on %{site_name}!"
+      text_body_template: |
+        Welcome to %{site_name}!
+
+        You're approved to join %{site_name}, welcome to our discussion forum!
+
+        Click the following link to confirm and activate your new account:
+        %{base_url}/users/activate-account/%{email_token}
+
+        If the above link is not clickable, try copying and pasting it into the address bar of your web browser.
+
+        %{new_user_tips}
+
+        We believe in [civilized community behavior](%{base_url}/faq) at all times.
+
+        Enjoy your stay!
+
     signup:
       subject_template: "[%{site_name}] Activate your new account"
       text_body_template: |
@@ -990,7 +1009,7 @@ en:
 
   page_not_found:
     title: "The page you requested doesn't exist on this discussion forum. Perhaps we can help find it, or another topic like it:"
-    latest_topics: "Latest topics"
+    popular_topics: "Popular topics"
     recent_topics: "Recent topics"
     see_more: "See More"
     search_title: "Search for this topic"

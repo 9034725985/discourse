@@ -9,6 +9,10 @@
 **/
 Discourse.FlagController = Discourse.ObjectController.extend(Discourse.ModalFunctionality, {
 
+  onShow: function() {
+    this.set('selected', null);
+  },
+
   changePostActionType: function(action) {
     this.set('selected', action);
   },
@@ -36,21 +40,21 @@ Discourse.FlagController = Discourse.ObjectController.extend(Discourse.ModalFunc
 
   submitText: function(){
     if (this.get('selected.is_custom_flag')) {
-      return Em.String.i18n("flagging.notify_action");
+      return I18n.t("flagging.notify_action");
     } else {
-      return Em.String.i18n("flagging.action");
+      return I18n.t("flagging.action");
     }
   }.property('selected.is_custom_flag'),
 
   takeAction: function() {
-    this.createFlag({takeAction: true})
+    this.createFlag({takeAction: true});
     this.set('hidden', true);
   },
 
   createFlag: function(opts) {
     var flagController = this;
     var postAction = this.get('actionByName.' + this.get('selected.name_key'));
-    var params = this.get('selected.is_custom_flag') ? {message: this.get('message')} : {}
+    var params = this.get('selected.is_custom_flag') ? {message: this.get('message')} : {};
 
     if (opts) params = $.extend(params, opts);
 

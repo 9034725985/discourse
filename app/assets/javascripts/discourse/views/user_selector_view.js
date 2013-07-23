@@ -1,6 +1,7 @@
 Discourse.UserSelector = Discourse.TextField.extend({
 
   didInsertElement: function(){
+
     var userSelectorView = this;
     var selected = [];
     var transformTemplate = Handlebars.compile("{{avatar this imageSize=\"tiny\"}} {{this.username}}");
@@ -8,6 +9,9 @@ Discourse.UserSelector = Discourse.TextField.extend({
     $(this.get('element')).val(this.get('usernames')).autocomplete({
       template: Discourse.UserSelector.templateFunction(),
 
+      disabled: this.get('disabled'),
+      single: this.get('single'),
+      allowAny: this.get('allowAny'),
       dataSource: function(term) {
         var exclude = selected;
         if (userSelectorView.get('excludeCurrentUser')){

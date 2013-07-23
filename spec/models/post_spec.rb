@@ -2,10 +2,7 @@ require 'spec_helper'
 require_dependency 'post_destroyer'
 
 describe Post do
-
-  before do
-    ImageSorcery.any_instance.stubs(:convert).returns(false)
-  end
+  before { Oneboxer.stubs :onebox }
 
   # Help us build a post with a raw body
   def post_with_body(body, user=nil)
@@ -26,7 +23,8 @@ describe Post do
   it { should have_many :post_replies }
   it { should have_many :replies }
 
-  it { should have_and_belong_to_many :upload }
+  it { should have_many :post_uploads }
+  it { should have_many :uploads }
 
   it { should rate_limit }
 
@@ -48,7 +46,7 @@ describe Post do
 
     describe '#with_user' do
       it 'gives you a user' do
-        Fabricate(:post, user: Fabricate(:user))
+        Fabricate(:post, user: Fabricate.build(:user))
         Post.with_user.first.user.should be_a User
       end
     end
@@ -180,6 +178,54 @@ describe Post do
       it "allows more images from a not-new account" do
         post_two_images.user.trust_level = TrustLevel.levels[:basic]
         post_two_images.should be_valid
+      end
+
+    end
+
+  end
+
+  describe "maximum attachments" do
+    let(:newuser) { Fabricate(:user, trust_level: TrustLevel.levels[:newuser]) }
+    let(:post_no_attachments) { Fabricate.build(:post, post_args.merge(user: newuser)) }
+    let(:post_one_attachment) { post_with_body('<a class="attachment" href="/uploads/default/1/2082985.txt">file.txt</a>', newuser) }
+    let(:post_two_attachments) { post_with_body('<a class="attachment" href="/uploads/default/2/20947092.log">errors.log</a> <a class="attachment" href="/uploads/default/3/283572385.3ds">model.3ds</a>', newuser) }
+
+    it "returns 0 attachments for an empty post" do
+      Fabricate.build(:post).attachment_count.should == 0
+    end
+
+    it "finds attachments from HTML" do
+      post_two_attachments.attachment_count.should == 2
+    end
+
+    context "validation" do
+
+      before do
+        SiteSetting.stubs(:newuser_max_attachments).returns(1)
+      end
+
+      context 'newuser' do
+        it "allows a new user to post below the limit" do
+          post_one_attachment.should be_valid
+        end
+
+        it "doesn't allow more than the maximum" do
+          post_two_attachments.should_not be_valid
+        end
+
+        it "doesn't allow a new user to edit their post to insert an attachment" do
+          post_no_attachments.user.trust_level = TrustLevel.levels[:new]
+          post_no_attachments.save
+          -> {
+            post_no_attachments.revise(post_no_attachments.user, post_two_attachments.raw)
+            post_no_attachments.reload
+          }.should_not change(post_no_attachments, :raw)
+        end
+      end
+
+      it "allows more attachments from a not-new account" do
+        post_two_attachments.user.trust_level = TrustLevel.levels[:basic]
+        post_two_attachments.should be_valid
       end
 
     end
@@ -421,8 +467,8 @@ describe Post do
       post.raw_hash.should == post_with_body(" thisis ourt est postbody").raw_hash
     end
 
-    it "returns the same hash even with different text case" do
-      post.raw_hash.should == post_with_body("THIS is OUR TEST post BODy").raw_hash
+    it "returns a different value with different text case" do
+      post.raw_hash.should_not == post_with_body("THIS is OUR TEST post BODy").raw_hash
     end
   end
 
@@ -570,19 +616,6 @@ describe Post do
       post.external_id.should be_present
       post.quote_count.should == 0
       post.replies.should be_blank
-    end
-
-    describe 'a forum topic user record for the topic' do
-
-      let(:topic_user) { post.user.topic_users.where(topic_id: topic.id).first }
-
-      it 'is set correctly' do
-        topic_user.should be_present
-        topic_user.should be_posted
-        topic_user.last_read_post_number.should == post.post_number
-        topic_user.seen_post_count.should == post.post_number
-      end
-
     end
 
     describe 'extract_quoted_post_numbers' do

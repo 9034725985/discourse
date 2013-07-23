@@ -12,6 +12,11 @@ require 'fakeweb'
 FakeWeb.allow_net_connect = false
 
 module Helpers
+
+  def self.next_seq
+    @next_seq = (@next_seq || 0) + 1
+  end
+
   def log_in(fabricator=nil)
     user = Fabricate(fabricator || :user)
     log_in_user(user)
@@ -49,9 +54,8 @@ Spork.prefork do
   Dir[Rails.root.join("spec/support/**/*.rb")].each {|f| require f}
 
 
-
   # let's not run seed_fu every test
-  SeedFu.quiet = true
+  SeedFu.quiet = true if SeedFu.respond_to? :quiet
   SeedFu.seed
 
   RSpec.configure do |config|
@@ -59,6 +63,7 @@ Spork.prefork do
     config.fail_fast = ENV['RSPEC_FAIL_FAST'] == "1"
     config.include Helpers
     config.mock_framework = :mocha
+    config.order = 'random'
 
     # If you're not using ActiveRecord, or you'd prefer not to run each of your
     # examples within a transaction, remove the following line or assign false
@@ -77,10 +82,15 @@ Spork.prefork do
     config.before do
       # disable all observers, enable as needed during specs
       ActiveRecord::Base.observers.disable :all
+      SiteSetting.provider.all.each do |setting|
+        SiteSetting.remove_override!(setting.name)
+      end
     end
 
     config.before(:all) do
       DiscoursePluginRegistry.clear
+      require_dependency 'site_settings/local_process_provider'
+      SiteSetting.provider = SiteSettings::LocalProcessProvider.new
     end
 
   end
@@ -114,10 +124,26 @@ Spork.each_run do
   $redis.client.reconnect
   Rails.cache.reconnect
   MessageBus.after_fork
+
 end
 
 def build(*args)
   Fabricate.build(*args)
+end
+
+def create_topic(args={})
+  args[:title] ||= "This is my title #{Helpers.next_seq}"
+  user = args.delete(:user) || Fabricate(:user)
+  guardian = Guardian.new(user)
+  TopicCreator.create(user, guardian, args)
+end
+
+def create_post(args={})
+  args[:title] ||= "This is my title #{Helpers.next_seq}"
+  args[:raw] ||= "This is the raw body of my post, it is cool #{Helpers.next_seq}"
+  args[:topic_id] = args[:topic].id if args[:topic]
+  user = args.delete(:user) || Fabricate(:user)
+  PostCreator.create(user, args)
 end
 
 module MessageBus::DiagnosticsHelper

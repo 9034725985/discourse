@@ -55,7 +55,7 @@ Discourse.SiteCustomization = Discourse.Model.extend({
 
 
   save: function() {
-    this.set('savingStatus', Em.String.i18n('saving'));
+    this.set('savingStatus', I18n.t('saving'));
     this.set('saving',true);
     var data = {
       name: this.name,
@@ -70,8 +70,11 @@ Discourse.SiteCustomization = Discourse.Model.extend({
       data: { site_customization: data },
       type: this.id ? 'PUT' : 'POST'
     }).then(function (result) {
-      if (!siteCustomization.id) { siteCustomization.set('id', result.id); }
-      siteCustomization.set('savingStatus', Em.String.i18n('saved'));
+      if (!siteCustomization.id) {
+        siteCustomization.set('id', result.id);
+        siteCustomization.set('key', result.key);
+      }
+      siteCustomization.set('savingStatus', I18n.t('saved'));
       siteCustomization.set('saving',false);
       siteCustomization.startTrackingChanges();
     });

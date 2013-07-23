@@ -11,24 +11,29 @@
 Discourse.ComposerView = Discourse.View.extend({
   templateName: 'composer',
   elementId: 'reply-control',
-  classNameBindings: ['content.creatingPrivateMessage:private-message',
+  classNameBindings: ['model.creatingPrivateMessage:private-message',
                       'composeState',
-                      'content.loading',
-                      'content.editTitle',
+                      'model.loading',
+                      'model.canEditTitle:edit-title',
                       'postMade',
-                      'content.creatingTopic:topic',
-                      'content.showPreview',
-                      'content.hidePreview'],
+                      'model.creatingTopic:topic',
+                      'model.showPreview',
+                      'model.hidePreview'],
+
+  model: Em.computed.alias('controller.model'),
+
+  // This is just in case something still references content. Can probably be removed
+  content: Em.computed.alias('model'),
 
   composeState: function() {
-    var state = this.get('content.composeState');
+    var state = this.get('model.composeState');
     if (state) return state;
     return Discourse.Composer.CLOSED;
-  }.property('content.composeState'),
+  }.property('model.composeState'),
 
   draftStatus: function() {
-    $('#draft-status').text(this.get('content.draftStatus') || "");
-  }.observes('content.draftStatus'),
+    $('#draft-status').text(this.get('model.draftStatus') || "");
+  }.observes('model.draftStatus'),
 
   // Disable fields when we're loading
   loadingChanged: function() {
@@ -41,18 +46,18 @@ Discourse.ComposerView = Discourse.View.extend({
 
   postMade: function() {
     return this.present('controller.createdPost') ? 'created-post' : null;
-  }.property('content.createdPost'),
+  }.property('model.createdPost'),
 
   observeReplyChanges: function() {
-    var _this = this;
-    if (this.get('content.hidePreview')) return;
+    var composerView = this;
+    if (this.get('model.hidePreview')) return;
     Ember.run.next(null, function() {
       var $wmdPreview, caretPosition;
-      if (_this.editor) {
-        _this.editor.refreshPreview();
+      if (composerView.editor) {
+        composerView.editor.refreshPreview();
         // if the caret is on the last line ensure preview scrolled to bottom
-        caretPosition = Discourse.Utilities.caretPosition(_this.wmdInput[0]);
-        if (!_this.wmdInput.val().substring(caretPosition).match(/\n/)) {
+        caretPosition = Discourse.Utilities.caretPosition(composerView.wmdInput[0]);
+        if (!composerView.wmdInput.val().substring(caretPosition).match(/\n/)) {
           $wmdPreview = $('#wmd-preview');
           if ($wmdPreview.is(':visible')) {
             return $wmdPreview.scrollTop($wmdPreview[0].scrollHeight);
@@ -60,7 +65,7 @@ Discourse.ComposerView = Discourse.View.extend({
         }
       }
     });
-  }.observes('content.reply', 'content.hidePreview'),
+  }.observes('model.reply', 'model.hidePreview'),
 
   newUserEducationVisibilityChanged: function() {
     var $panel = $('#new-user-education');
@@ -98,7 +103,7 @@ Discourse.ComposerView = Discourse.View.extend({
       $('.topic-area').css('padding-bottom', sizePx);
       $('.composer-popup').css('bottom', sizePx);
     });
-  }.observes('content.composeState'),
+  }.observes('model.composeState'),
 
   keyUp: function(e) {
     var controller = this.get('controller');
@@ -142,7 +147,7 @@ Discourse.ComposerView = Discourse.View.extend({
 
     Discourse.SyntaxHighlighting.apply($wmdPreview);
 
-    var post = this.get('controller.content.post');
+    var post = this.get('model.post');
     var refresh = false;
 
     // If we are editing a post, we'll refresh its contents once. This is a feature that
@@ -164,53 +169,50 @@ Discourse.ComposerView = Discourse.View.extend({
   initEditor: function() {
     // not quite right, need a callback to pass in, meaning this gets called once,
     // but if you start replying to another topic it will get the avatars wrong
-    var $uploadTarget, $wmdInput, editor, saveDraft, selected, template, topic, transformTemplate,
-      _this = this;
+    var $wmdInput, editor, composerView = this;
     this.wmdInput = $wmdInput = $('#wmd-input');
     if ($wmdInput.length === 0 || $wmdInput.data('init') === true) return;
 
     $LAB.script(assetPath('defer/html-sanitizer-bundle'));
     Discourse.ComposerView.trigger("initWmdEditor");
-    template = Discourse.UserSelector.templateFunction();
+    var template = Discourse.UserSelector.templateFunction();
 
-    transformTemplate = Handlebars.compile("{{avatar this imageSize=\"tiny\"}} {{this.username}}");
     $wmdInput.data('init', true);
     $wmdInput.autocomplete({
       template: template,
       dataSource: function(term) {
         return Discourse.UserSearch.search({
           term: term,
-          topicId: _this.get('controller.controllers.topic.content.id')
+          topicId: composerView.get('controller.controllers.topic.model.id')
         });
       },
       key: "@",
       transformComplete: function(v) { return v.username; }
     });
 
-    topic = this.get('topic');
     this.editor = editor = Discourse.Markdown.createEditor({
       lookupAvatar: function(username) {
         return Discourse.Utilities.avatarImg({ username: username, size: 'tiny' });
       }
     });
 
-    $uploadTarget = $('#reply-control');
+    var $uploadTarget = $('#reply-control');
     this.editor.hooks.insertImageDialog = function(callback) {
       callback(null);
-      _this.get('controller').send('showImageSelector', _this);
+      composerView.get('controller').send('showUploadSelector', composerView);
       return true;
     };
 
     this.editor.hooks.onPreviewRefresh = function() {
-      return _this.afterRender();
+      return composerView.afterRender();
     };
 
     this.editor.run();
     this.set('editor', this.editor);
     this.loadingChanged();
 
-    saveDraft = Discourse.debounce((function() {
-      return _this.get('controller').saveDraft();
+    var saveDraft = Discourse.debounce((function() {
+      return composerView.get('controller').saveDraft();
     }), 2000);
 
     $wmdInput.keyup(function() {
@@ -223,7 +225,7 @@ Discourse.ComposerView = Discourse.View.extend({
     $replyTitle.keyup(function() {
       saveDraft();
       // removes the red background once the requirements are met
-      if (_this.get('controller.content.missingTitleCharacters') <= 0) {
+      if (composerView.get('model.missingTitleCharacters') <= 0) {
         $replyTitle.removeClass("requirements-not-met");
       }
       return true;
@@ -232,7 +234,7 @@ Discourse.ComposerView = Discourse.View.extend({
     // when the title field loses the focus...
     $replyTitle.blur(function(){
       // ...and the requirements are not met (ie. the minimum number of characters)
-      if (_this.get('controller.content.missingTitleCharacters') > 0) {
+      if (composerView.get('model.missingTitleCharacters') > 0) {
         // then, "redify" the background
         $replyTitle.toggleClass("requirements-not-met", true);
       }
@@ -245,28 +247,27 @@ Discourse.ComposerView = Discourse.View.extend({
     $uploadTarget.fileupload({
         url: Discourse.getURL('/uploads'),
         dataType: 'json',
-        timeout: 20000,
-        formData: { topic_id: 1234 }
+        timeout: 20000
     });
 
     // submit - this event is triggered for each upload
     $uploadTarget.on('fileuploadsubmit', function (e, data) {
       var result = Discourse.Utilities.validateFilesForUpload(data.files);
       // reset upload status when everything is ok
-      if (result) _this.setProperties({ uploadProgress: 0, loadingImage: true });
+      if (result) composerView.setProperties({ uploadProgress: 0, isUploading: true });
       return result;
     });
 
     // send - this event is triggered when the upload request is about to start
     $uploadTarget.on('fileuploadsend', function (e, data) {
-      // hide the "image selector" modal
-      _this.get('controller').send('closeModal');
+      // hide the "file selector" modal
+      composerView.get('controller').send('closeModal');
       // cf. https://github.com/blueimp/jQuery-File-Upload/wiki/API#how-to-cancel-an-upload
       var jqXHR = data.xhr();
       // need to wait for the link to show up in the DOM
       Em.run.schedule('afterRender', function() {
         // bind on the click event on the cancel link
-        $('#cancel-image-upload').on('click', function() {
+        $('#cancel-file-upload').on('click', function() {
           // cancel the upload
           // NOTE: this will trigger a 'fileuploadfail' event with status = 0
           if (jqXHR) jqXHR.abort();
@@ -279,21 +280,21 @@ Discourse.ComposerView = Discourse.View.extend({
     // progress all
     $uploadTarget.on('fileuploadprogressall', function (e, data) {
       var progress = parseInt(data.loaded / data.total * 100, 10);
-      _this.set('uploadProgress', progress);
+      composerView.set('uploadProgress', progress);
     });
 
     // done
     $uploadTarget.on('fileuploaddone', function (e, data) {
-      var upload = data.result;
-      var html = "<img src=\"" + upload.url + "\" width=\"" + upload.width + "\" height=\"" + upload.height + "\">";
-      _this.addMarkdown(html);
-      _this.set('loadingImage', false);
+      var markdown = Discourse.Utilities.getUploadMarkdown(data.result);
+      // appends a space at the end of the inserted markdown
+      composerView.addMarkdown(markdown + " ");
+      composerView.set('isUploading', false);
     });
 
     // fail
     $uploadTarget.on('fileuploadfail', function (e, data) {
       // hide upload status
-      _this.set('loadingImage', false);
+      composerView.set('isUploading', false);
       // deal with meaningful errors first
       if (data.jqXHR) {
         switch (data.jqXHR.status) {
@@ -301,12 +302,11 @@ Discourse.ComposerView = Discourse.View.extend({
           case 0: return;
           // 413 == entity too large, returned usually from nginx
           case 413:
-            bootbox.alert(Em.String.i18n('post.errors.upload_too_large', {max_size_kb: Discourse.SiteSettings.max_upload_size_kb}));
+            var maxSizeKB = Discourse.Utilities.maxUploadSizeInKB(data.files[0].name);
+            bootbox.alert(I18n.t('post.errors.upload_too_large', { max_size_kb: maxSizeKB }));
             return;
-          // 415 == media type not recognized (ie. not an image)
+          // 415 == media type not authorized
           case 415:
-            bootbox.alert(Em.String.i18n('post.errors.only_images_are_supported'));
-            return;
           // 422 == there has been an error on the server (mostly due to FastImage)
           case 422:
             bootbox.alert(data.jqXHR.responseText);
@@ -314,14 +314,14 @@ Discourse.ComposerView = Discourse.View.extend({
         }
       }
       // otherwise, display a generic error message
-      bootbox.alert(Em.String.i18n('post.errors.upload'));
+      bootbox.alert(I18n.t('post.errors.upload'));
     });
 
     // I hate to use Em.run.later, but I don't think there's a way of waiting for a CSS transition
     // to finish.
     return Em.run.later(jQuery, (function() {
       var replyTitle = $('#reply-title');
-      _this.resize();
+      composerView.resize();
       if (replyTitle.length) {
         return replyTitle.putCursorAtEnd();
       } else {
@@ -333,8 +333,8 @@ Discourse.ComposerView = Discourse.View.extend({
   addMarkdown: function(text) {
     var ctrl = $('#wmd-input').get(0),
         caretPosition = Discourse.Utilities.caretPosition(ctrl),
-        current = this.get('content.reply');
-    this.set('content.reply', current.substring(0, caretPosition) + text + current.substring(caretPosition, current.length));
+        current = this.get('model.reply');
+    this.set('model.reply', current.substring(0, caretPosition) + text + current.substring(caretPosition, current.length));
 
     Em.run.schedule('afterRender', function() {
       Discourse.Utilities.setCaretPosition(ctrl, caretPosition + text.length);
@@ -372,45 +372,48 @@ Discourse.ComposerView = Discourse.View.extend({
   },
 
   titleValidation: function() {
-    var title = this.get('content.title'), reason;
-    var minLength = (this.get('content.creatingPrivateMessage') ? Discourse.SiteSettings.min_private_message_title_length : Discourse.SiteSettings.min_topic_title_length);
-    if( !title || title.length < 1 ){
-      reason = Em.String.i18n('composer.error.title_missing');
-    } else if( title.length < minLength ) {
-      reason = Em.String.i18n('composer.error.title_too_short', {min: minLength})
-    } else if( title.length > Discourse.SiteSettings.max_topic_title_length ) {
-      reason = Em.String.i18n('composer.error.title_too_long', {max: Discourse.SiteSettings.max_topic_title_length})
+    var titleLength = this.get('model.titleLength'),
+        missingChars = this.get('model.missingTitleCharacters'),
+        reason;
+    if( titleLength < 1 ){
+      reason = I18n.t('composer.error.title_missing');
+    } else if( missingChars > 0 ) {
+      reason = I18n.t('composer.error.title_too_short', {min: this.get('model.minimumTitleLength')});
+    } else if( titleLength > Discourse.SiteSettings.max_topic_title_length ) {
+      reason = I18n.t('composer.error.title_too_long', {max: Discourse.SiteSettings.max_topic_title_length});
     }
 
     if( reason ) {
       return Discourse.InputValidation.create({ failed: true, reason: reason });
     }
-  }.property('content.title'),
+  }.property('model.titleLength', 'model.missingTitleCharacters', 'model.minimumTitleLength'),
 
   categoryValidation: function() {
-    if( !Discourse.SiteSettings.allow_uncategorized_topics && !this.get('content.categoryName')) {
-      return Discourse.InputValidation.create({ failed: true, reason: Em.String.i18n('composer.error.category_missing') });
+    if( !Discourse.SiteSettings.allow_uncategorized_topics && !this.get('model.categoryName')) {
+      return Discourse.InputValidation.create({ failed: true, reason: I18n.t('composer.error.category_missing') });
     }
-  }.property('content.categoryName'),
+  }.property('model.categoryName'),
 
   replyValidation: function() {
-    var reply = this.get('content.reply'), reason;
-    if( !reply || reply.length < 1 ){
-      reason = Em.String.i18n('composer.error.post_missing');
-    } else if( reply.length < Discourse.SiteSettings.min_post_length ) {
-      reason = Em.String.i18n('composer.error.post_length', {min: Discourse.SiteSettings.min_post_length})
+    var replyLength = this.get('model.replyLength'),
+        missingChars = this.get('model.missingReplyCharacters'),
+        reason;
+    if( replyLength < 1 ){
+      reason = I18n.t('composer.error.post_missing');
+    } else if( missingChars > 0 ) {
+      reason = I18n.t('composer.error.post_length', {min: this.get('model.minimumPostLength')});
     }
 
     if( reason ) {
       return Discourse.InputValidation.create({ failed: true, reason: reason });
     }
-  }.property('content.reply')
+  }.property('model.reply', 'model.replyLength', 'model.missingReplyCharacters', 'model.minimumPostLength')
 });
 
 // not sure if this is the right way, keeping here for now, we could use a mixin perhaps
 Discourse.NotifyingTextArea = Ember.TextArea.extend({
   placeholder: function() {
-    return Em.String.i18n(this.get('placeholderKey'));
+    return I18n.t(this.get('placeholderKey'));
   }.property('placeholderKey'),
 
   didInsertElement: function() {

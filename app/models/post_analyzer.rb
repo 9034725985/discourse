@@ -18,9 +18,9 @@ class PostAnalyzer
 
     # If we have any of the oneboxes in the cache, throw them in right away, don't
     # wait for the post processor.
-    dirty = false
     result = Oneboxer.apply(cooked) do |url, elem|
-      Oneboxer.render_from_cache(url)
+      Oneboxer.invalidate(url) if args.last[:invalidate_oneboxes]
+      Oneboxer.onebox url
     end
 
     cooked = result.to_html if result.changed?
@@ -36,6 +36,18 @@ class PostAnalyzer
       if dom_class
         (Post.white_listed_image_classes & dom_class.split(" ")).count > 0
       end
+    end.count
+  end
+
+  # How many attachments are present in the post
+  def attachment_count
+    return 0 unless @raw.present?
+
+    if SiteSetting.enable_s3_uploads?
+      cooked_document.css("a.attachment[href^=\"#{S3Store.base_url}\"]")
+    else
+      cooked_document.css("a.attachment[href^=\"#{LocalStore.directory}\"]") +
+      cooked_document.css("a.attachment[href^=\"#{LocalStore.base_url}\"]")
     end.count
   end
 
@@ -63,9 +75,14 @@ class PostAnalyzer
 
     @linked_hosts = {}
     raw_links.each do |u|
-      uri = URI.parse(u)
-      host = uri.host
-      @linked_hosts[host] ||= 1
+      begin
+        uri = URI.parse(u)
+        host = uri.host
+        @linked_hosts[host] ||= 1
+      rescue URI::InvalidURIError
+        # An invalid URI does not count as a raw link.
+        next
+      end
     end
     @linked_hosts
   end

@@ -2,7 +2,7 @@ require "spec_helper"
 
 describe UserNotifications do
 
-  let(:user) { Fabricate(:user) }
+  let(:user) { Fabricate(:admin) }
 
   describe ".signup" do
     subject { UserNotifications.signup(user) }
@@ -91,11 +91,23 @@ describe UserNotifications do
       end
 
       it "has a message" do
-        expects_build_with(has_entry(:message, post.raw))
+        expects_build_with(has_key(:message))
+      end
+
+      it "has a context" do
+        expects_build_with(has_key(:context))
       end
 
       it "has an unsubscribe link" do
         expects_build_with(has_key(:add_unsubscribe_link))
+      end
+
+      it "has an post_id" do
+        expects_build_with(has_key(:post_id))
+      end
+
+      it "has an topic_id" do
+        expects_build_with(has_key(:topic_id))
       end
 
       it "has a from alias" do

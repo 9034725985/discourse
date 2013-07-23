@@ -9,14 +9,21 @@
 **/
 Discourse.InvitePrivateController = Discourse.ObjectController.extend(Discourse.ModalFunctionality, {
 
+  modalClass: 'invite',
+
+  onShow: function(){
+    this.set('controllers.modal.modalClass', 'invite-modal');
+    this.set('emailOrUsername', '');
+  },
+
   disabled: function() {
     if (this.get('saving')) return true;
     return this.blank('emailOrUsername');
   }.property('emailOrUsername', 'saving'),
 
   buttonTitle: function() {
-    if (this.get('saving')) return Em.String.i18n('topic.inviting');
-    return Em.String.i18n('topic.invite_private.action');
+    if (this.get('saving')) return I18n.t('topic.inviting');
+    return I18n.t('topic.invite_private.action');
   }.property('saving'),
 
   invite: function() {
@@ -27,10 +34,14 @@ Discourse.InvitePrivateController = Discourse.ObjectController.extend(Discourse.
     this.set('saving', true);
     this.set('error', false);
     // Invite the user to the private message
-    this.get('content').inviteUser(this.get('emailOrUsername')).then(function() {
+    this.get('content').inviteUser(this.get('emailOrUsername')).then(function(result) {
       // Success
       invitePrivateController.set('saving', false);
       invitePrivateController.set('finished', true);
+
+      if(result && result.user) {
+        invitePrivateController.get('content.details.allowed_users').pushObject(result.user);
+      }
     }, function() {
       // Failure
       invitePrivateController.set('error', true);

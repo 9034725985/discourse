@@ -14,12 +14,12 @@ Discourse.Group = Discourse.Model.extend({
     if(id && !this.get('loaded')) {
       var group = this;
       Discourse.ajax('/admin/groups/' + this.get('id') + '/users').then(function(payload){
-        var users = Em.A()
+        var users = Em.A();
         _.each(payload,function(user){
           users.addObject(Discourse.User.create(user));
         });
-        group.set('users', users)
-        group.set('loaded', true)
+        group.set('users', users);
+        group.set('loaded', true);
       });
     }
   },
@@ -30,18 +30,24 @@ Discourse.Group = Discourse.Model.extend({
     if(users) {
       usernames = _.map(users, function(user){
         return user.get('username');
-      }).join(',')
+      }).join(',');
     }
     return usernames;
   }.property('users'),
 
   destroy: function(){
+    if(!this.id) return;
+
     var group = this;
     group.set('disableSave', true);
 
-    return Discourse.ajax("/admin/groups/" + this.get("id"), {type: "DELETE"})
+    return Discourse.ajax("/admin/groups/" + group.get('id'), {type: "DELETE"})
       .then(function(){
+        return true;
+      }, function(jqXHR, status, error) {
         group.set('disableSave', false);
+        bootbox.alert(I18n.t("admin.groups.delete_failed"));
+        return false;
       });
   },
 
@@ -65,13 +71,20 @@ Discourse.Group = Discourse.Model.extend({
     var group = this;
     group.set('disableSave', true);
 
-    return Discourse.ajax("/admin/groups/" + this.get('id'), {type: "PUT", data: {
-      group: {
-        name: this.get('name'),
-        usernames: this.get('usernames')
+    return Discourse.ajax("/admin/groups/" + this.get('id'), {
+      type: "PUT",
+      data: {
+        group: {
+          name: this.get('name'),
+          usernames: this.get('usernames')
+        }
+      },
+      complete: function(){
+        group.set('disableSave', false);
       }
-    }}).then(function(r){
-      group.set('disableSave', false);
+    }).then(null, function(e){
+      var message = $.parseJSON(e.responseText).errors;
+      bootbox.alert(message);
     });
   }
 

@@ -5,9 +5,9 @@ require 'spec_helper'
 describe PostAction do
 
   before do
-    SiteSetting.flags_required_to_hide_post = 0 # never
-    SiteSetting.num_flags_to_block_new_user = 2
-    SiteSetting.num_users_to_block_new_user = 2
+    SiteSetting.stubs(:flags_required_to_hide_post).returns(0) # never
+    SiteSetting.stubs(:num_flags_to_block_new_user).returns(2)
+    SiteSetting.stubs(:num_users_to_block_new_user).returns(2)
   end
 
   Given!(:admin)     { Fabricate(:admin) } # needed to send a system message
@@ -19,8 +19,8 @@ describe PostAction do
     Given(:spammer)  { Fabricate(:user, trust_level: TrustLevel.levels[:newuser]) }
 
     context 'spammer post is not flagged enough times' do
-      Given!(:spam_post)  { Fabricate(:post, user: spammer) }
-      Given!(:spam_post2) { Fabricate(:post, user: spammer) }
+      Given!(:spam_post)  { create_post(user: spammer) }
+      Given!(:spam_post2) { create_post(user: spammer) }
       When                { PostAction.act(user1, spam_post, PostActionType.types[:spam]) }
       Then                { expect(spam_post.reload).to_not be_hidden }
 
@@ -58,7 +58,7 @@ describe PostAction do
         end
 
         context "a post is deleted" do
-          When { spam_post.trash!; spammer.reload }
+          When { spam_post.trash!(moderator); spammer.reload }
           Then { expect(spammer.reload).to be_blocked }
         end
 

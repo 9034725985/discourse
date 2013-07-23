@@ -37,8 +37,7 @@ class TextSentinel
     seems_meaningful? &&
     seems_pronounceable? &&
     seems_unpretentious? &&
-    seems_quiet? &&
-    true
+    seems_quiet?
   end
 
   private
@@ -66,7 +65,7 @@ class TextSentinel
 
   def seems_quiet?
     # We don't allow all upper case content in english
-    not((@text =~ /[A-Z]+/) && (@text == @text.upcase))
+    not((@text =~ /[A-Z]+/) && !(@text =~ /[^[:ascii:]]/) && (@text == @text.upcase))
   end
 
 end

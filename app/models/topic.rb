@@ -7,7 +7,7 @@ require_dependency 'text_cleaner'
 require_dependency 'trashable'
 
 class Topic < ActiveRecord::Base
-  include ActionView::Helpers
+  include ActionView::Helpers::SanitizeHelper
   include RateLimiter::OnCreateRecord
   include Trashable
 
@@ -21,12 +21,14 @@ class Topic < ActiveRecord::Base
 
   versioned if: :new_version_required?
 
-  def trash!
-    super
+  def trash!(trashed_by=nil)
+    update_category_topic_count_by(-1) if deleted_at.nil?
+    super(trashed_by)
     update_flagged_posts_count
   end
 
   def recover!
+    update_category_topic_count_by(1) unless deleted_at.nil?
     super
     update_flagged_posts_count
   end
@@ -34,8 +36,6 @@ class Topic < ActiveRecord::Base
   rate_limit :default_rate_limiter
   rate_limit :limit_topics_per_day
   rate_limit :limit_private_messages_per_day
-
-  before_validation :sanitize_title
 
   validates :title, :presence => true,
                     :topic_title_length => true,
@@ -47,10 +47,13 @@ class Topic < ActiveRecord::Base
                                         :collection => Proc.new{ Topic.listable_topics } }
 
   before_validation do
+    self.sanitize_title
     self.title = TextCleaner.clean_title(TextSentinel.title_sentinel(title).text) if errors[:title].empty?
   end
 
-  serialize :meta_data, ActiveRecord::Coders::Hstore
+  unless rails4?
+    serialize :meta_data, ActiveRecord::Coders::Hstore
+  end
 
   belongs_to :category
   has_many :posts
@@ -90,9 +93,9 @@ class Topic < ActiveRecord::Base
 
   scope :listable_topics, lambda { where('topics.archetype <> ?', [Archetype.private_message]) }
 
-  scope :by_newest, order('topics.created_at desc, topics.id desc')
+  scope :by_newest, -> { order('topics.created_at desc, topics.id desc') }
 
-  scope :visible, where(visible: true)
+  scope :visible, -> { where(visible: true) }
 
   scope :created_since, lambda { |time_ago| where('created_at > ?', time_ago) }
 
@@ -102,9 +105,9 @@ class Topic < ActiveRecord::Base
     # Query conditions
     condition =
       if ids.present?
-        ["NOT c.secure or c.id in (:cats)", cats: ids]
+        ["NOT c.read_restricted or c.id in (:cats)", cats: ids]
       else
-        ["NOT c.secure"]
+        ["NOT c.read_restricted"]
       end
 
     where("category_id IS NULL OR category_id IN (
@@ -129,7 +132,6 @@ class Topic < ActiveRecord::Base
 
   after_create do
     changed_to_category(category)
-    notifier.created_topic! user_id
     if archetype == Archetype.private_message
       DraftSequence.next!(user, Draft::NEW_PRIVATE_MESSAGE)
     else
@@ -139,7 +141,7 @@ class Topic < ActiveRecord::Base
 
   before_save do
     if (auto_close_at_changed? and !auto_close_at_was.nil?) or (auto_close_user_id_changed? and auto_close_at)
-      self.auto_close_started_at ||= Time.zone.now
+      self.auto_close_started_at ||= Time.zone.now if auto_close_at
       Jobs.cancel_scheduled_job(:close_topic, {topic_id: id})
       true
     end
@@ -249,7 +251,6 @@ class Topic < ActiveRecord::Base
          .listable_topics
          .limit(SiteSetting.max_similar_results)
          .order('similarity desc')
-         .all
   end
 
   def update_status(status, enabled, user)
@@ -270,7 +271,8 @@ class Topic < ActiveRecord::Base
   def self.reset_highest(topic_id)
     result = exec_sql "UPDATE topics
                         SET highest_post_number = (SELECT COALESCE(MAX(post_number), 0) FROM posts WHERE topic_id = :topic_id AND deleted_at IS NULL),
-                            posts_count = (SELECT count(*) FROM posts WHERE deleted_at IS NULL AND topic_id = :topic_id)
+                            posts_count = (SELECT count(*) FROM posts WHERE deleted_at IS NULL AND topic_id = :topic_id),
+                            last_posted_at = (SELECT MAX(created_at) FROM POSTS WHERE topic_id = :topic_id AND deleted_at IS NULL)
                         WHERE id = :topic_id
                         RETURNING highest_post_number", topic_id: topic_id
     highest_post_number = result.first['highest_post_number'].to_i
@@ -297,6 +299,7 @@ class Topic < ActiveRecord::Base
               FROM (SELECT topic_id,
                            round(exp(avg(ln(avg_time)))) AS gmean
                     FROM posts
+                    WHERE avg_time > 0 AND avg_time IS NOT NULL
                     GROUP BY topic_id) AS x
               WHERE x.topic_id = topics.id")
   end
@@ -310,14 +313,14 @@ class Topic < ActiveRecord::Base
       old_category = category
 
       if category_id.present? && category_id != cat.id
-        Category.update_all 'topic_count = topic_count - 1', ['id = ?', category_id]
+        Category.where(['id = ?', category_id]).update_all 'topic_count = topic_count - 1'
       end
 
       self.category_id = cat.id
       save
 
       CategoryFeaturedTopic.feature_topics_for(old_category)
-      Category.update_all 'topic_count = topic_count + 1', id: cat.id
+      Category.where(id: cat.id).update_all 'topic_count = topic_count + 1'
       CategoryFeaturedTopic.feature_topics_for(cat) unless old_category.try(:id) == cat.try(:id)
     end
   end
@@ -353,7 +356,7 @@ class Topic < ActiveRecord::Base
     if name.blank?
       if category_id.present?
         CategoryFeaturedTopic.feature_topics_for(category)
-        Category.update_all 'topic_count = topic_count - 1', id: category_id
+        Category.where(id: category_id).update_all 'topic_count = topic_count - 1'
       end
       self.category_id = nil
       save
@@ -369,31 +372,36 @@ class Topic < ActiveRecord::Base
     [featured_user1_id, featured_user2_id, featured_user3_id, featured_user4_id].uniq.compact
   end
 
+  def remove_allowed_user(username)
+    user = User.where(username: username).first
+    if user
+      topic_allowed_users.where(user_id: user.id).first.destroy
+    end
+  end
+
   # Invite a user to the topic by username or email. Returns success/failure
   def invite(invited_by, username_or_email)
     if private_message?
       # If the user exists, add them to the topic.
-      user = User.find_by_username_or_email(username_or_email).first
-      if user.present?
-        if topic_allowed_users.create!(user_id: user.id)
-          # Notify the user they've been invited
-          user.notifications.create(notification_type: Notification.types[:invited_to_private_message],
-                                    topic_id: id,
-                                    post_number: 1,
-                                    data: { topic_title: title,
-                                            display_username: invited_by.username }.to_json)
-          return true
-        end
-      elsif username_or_email =~ /^.+@.+$/
-        # If the user doesn't exist, but it looks like an email, invite the user by email.
-        return invite_by_email(invited_by, username_or_email)
+      user = User.find_by_username_or_email(username_or_email)
+      if user && topic_allowed_users.create!(user_id: user.id)
+
+        # Notify the user they've been invited
+        user.notifications.create(notification_type: Notification.types[:invited_to_private_message],
+                                  topic_id: id,
+                                  post_number: 1,
+                                  data: { topic_title: title,
+                                          display_username: invited_by.username }.to_json)
+        return true
       end
-    else
-      # Success is whether the invite was created
-      return invite_by_email(invited_by, username_or_email).present?
     end
 
-    false
+    if username_or_email =~ /^.+@.+$/
+      # NOTE callers expect an invite object if an invite was sent via email
+      invite_by_email(invited_by, username_or_email)
+    else
+      false
+    end
   end
 
   # Invite a user by email and return the invite. Return the previously existing invite
@@ -621,9 +629,17 @@ class Topic < ActiveRecord::Base
     self
   end
 
-  def secure_category?
-    category && category.secure
+  def read_restricted_category?
+    category && category.read_restricted
   end
+
+  private
+
+    def update_category_topic_count_by(num)
+      if category_id.present?
+        Category.where(['id = ?', category_id]).update_all("topic_count = topic_count " + (num > 0 ? '+' : '') + "#{num}")
+      end
+    end
 end
 
 # == Schema Information
@@ -676,6 +692,7 @@ end
 #  auto_close_at           :datetime
 #  auto_close_user_id      :integer
 #  auto_close_started_at   :datetime
+#  deleted_by_id           :integer
 #
 # Indexes
 #

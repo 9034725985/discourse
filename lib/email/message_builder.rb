@@ -11,10 +11,23 @@ module Email
   end
 
   class MessageBuilder
+    attr_reader :template_args
 
     def initialize(to, opts=nil)
       @to = to
       @opts = opts || {}
+
+      @template_args = {site_name: SiteSetting.title,
+                        base_url: Discourse.base_url,
+                        user_preferences_url: "#{Discourse.base_url}/user_preferences" }.merge!(@opts)
+
+      if @template_args[:url].present?
+        if allow_reply_by_email?
+          @template_args[:respond_instructions] = I18n.t('user_notifications.reply_by_email', @template_args)
+        else
+          @template_args[:respond_instructions] = I18n.t('user_notifications.visit_link_to_respond', @template_args)
+        end
+      end
     end
 
     def subject
@@ -35,12 +48,6 @@ module Email
       body
     end
 
-    def template_args
-      @template_args ||= { site_name: SiteSetting.title,
-                           base_url: Discourse.base_url,
-                           user_preferences_url: "#{Discourse.base_url}/user_preferences" }.merge!(@opts)
-    end
-
     def build_args
       { to: @to,
         subject: subject,
@@ -55,13 +62,29 @@ module Email
         result['List-Unsubscribe'] = "<#{template_args[:user_preferences_url]}>" if @opts[:add_unsubscribe_link]
       end
 
+      result['X-Discourse-Post-Id'] = @opts[:post_id].to_s if @opts[:post_id]
+      result['X-Discourse-Topic-Id'] = @opts[:topic_id].to_s if @opts[:topic_id]
+
       if allow_reply_by_email?
-        result['Discourse-Reply-Key'] = reply_key
+        result['X-Discourse-Reply-Key'] = reply_key
         result['Reply-To'] = reply_by_email_address
       else
         result['Reply-To'] = from_value
       end
 
+      result.merge(MessageBuilder.custom_headers(SiteSetting.email_custom_headers))
+    end
+
+    def self.custom_headers(string)
+      result = {}
+      string.split('|').each { |item|
+        header = item.split(':', 2)
+        if header.length == 2
+          name = header[0].strip
+          value = header[1].strip
+          result[name] = value if name.length > 0 && value.length > 0
+        end
+      } unless string.nil?
       result
     end
 

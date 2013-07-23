@@ -1,4 +1,33 @@
 /**
+  The route for updating a user's username
+
+  @class PreferencesUsernameRoute
+  @extends Discourse.RestrictedUserRoute
+  @namespace Discourse
+  @module Discourse
+**/
+Discourse.PreferencesUsernameRoute = Discourse.RestrictedUserRoute.extend({
+  model: function() {
+    return this.modelFor('user');
+  },
+
+  renderTemplate: function() {
+    return this.render({ into: 'user', outlet: 'userOutlet' });
+  },
+
+  // A bit odd, but if we leave to /preferences we need to re-render that outlet
+  exit: function() {
+    this._super();
+    this.render('preferences', { into: 'user', outlet: 'userOutlet', controller: 'preferences' });
+  },
+
+  setupController: function(controller, user) {
+    controller.setProperties({ model: user, newUsername: user.get('username') });
+  }
+});
+
+
+/**
   This controller supports actions related to updating one's username
 
   @class PreferencesUsernameController
@@ -13,22 +42,13 @@ Discourse.PreferencesUsernameController = Discourse.ObjectController.extend({
   errorMessage: null,
   newUsername: null,
 
-  saveDisabled: function() {
-    if (this.get('saving')) return true;
-    if (this.blank('newUsername')) return true;
-    if (this.get('taken')) return true;
-    if (this.get('unchanged')) return true;
-    if (this.get('errorMessage')) return true;
-    return false;
-  }.property('newUsername', 'taken', 'errorMessage', 'unchanged', 'saving'),
-
-  unchanged: function() {
-    return this.get('newUsername') === this.get('content.username');
-  }.property('newUsername', 'content.username'),
+  newUsernameEmpty: Em.computed.empty('newUsername'),
+  saveDisabled: Em.computed.or('saving', 'newUsernameEmpty', 'taken', 'unchanged', 'errorMessage'),
+  unchanged: Discourse.computed.propertyEqual('newUsername', 'username'),
 
   checkTaken: function() {
     if( this.get('newUsername') && this.get('newUsername').length < 3 ) {
-      this.set('errorMessage', Em.String.i18n('user.name.too_short'));
+      this.set('errorMessage', I18n.t('user.name.too_short'));
     } else {
       var preferencesUsernameController = this;
       this.set('taken', false);
@@ -46,13 +66,13 @@ Discourse.PreferencesUsernameController = Discourse.ObjectController.extend({
   }.observes('newUsername'),
 
   saveButtonText: function() {
-    if (this.get('saving')) return Em.String.i18n("saving");
-    return Em.String.i18n("user.change_username.action");
+    if (this.get('saving')) return I18n.t("saving");
+    return I18n.t("user.change");
   }.property('saving'),
 
   changeUsername: function() {
     var preferencesUsernameController = this;
-    return bootbox.confirm(Em.String.i18n("user.change_username.confirm"), Em.String.i18n("no_value"), Em.String.i18n("yes_value"), function(result) {
+    return bootbox.confirm(I18n.t("user.change_username.confirm"), I18n.t("no_value"), I18n.t("yes_value"), function(result) {
       if (result) {
         preferencesUsernameController.set('saving', true);
         preferencesUsernameController.get('content').changeUsername(preferencesUsernameController.get('newUsername')).then(function() {

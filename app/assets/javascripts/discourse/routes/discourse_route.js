@@ -23,6 +23,8 @@ Discourse.Route = Em.Route.extend({
     $('.d-dropdown').hide();
     $('header ul.icons li').removeClass('active');
     $('[data-toggle="dropdown"]').parent().removeClass('open');
+    // close the lightbox
+    if ($.magnificPopup && $.magnificPopup.instance) { $.magnificPopup.instance.close(); }
 
     Discourse.set('notifyCount',0);
 
@@ -55,6 +57,9 @@ Discourse.Route.reopenClass({
     if (controller) {
       if (model) {
         controller.set('model', model);
+      }
+      if(controller && controller.onShow) {
+        controller.onShow();
       }
       controller.set('flashMessage', null);
     }

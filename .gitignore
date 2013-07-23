@@ -25,6 +25,7 @@ dump.rdb
 config/database.yml
 config/redis.yml
 config/discourse.pill
+config/environments/production.rb
 
 # Ignore the default SQLite database and db dumps
 /db/*.sqlite3
@@ -64,8 +65,6 @@ config/fog_credentials.yml
 
 /public/uploads
 /public/stylesheet-cache/*
-/public/downloads
-/public/images
 
 # Scripts used for downloading/refreshing db
 script/download_db

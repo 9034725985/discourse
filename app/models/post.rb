@@ -1,5 +1,7 @@
 require_dependency 'jobs'
 require_dependency 'pretty_text'
+require_dependency 'local_store'
+require_dependency 's3_store'
 require_dependency 'rate_limiter'
 require_dependency 'post_revisor'
 require_dependency 'enum'
@@ -27,14 +29,15 @@ class Post < ActiveRecord::Base
   has_many :post_actions
   has_many :topic_links
 
-  has_and_belongs_to_many :upload
+  has_many :post_uploads
+  has_many :uploads, through: :post_uploads
 
   has_one :post_search_data
 
   validates_with ::Validators::PostValidator
 
-  # We can pass a hash of image sizes when saving to prevent crawling those images
-  attr_accessor :image_sizes, :quoted_post_numbers, :no_bump, :invalidate_oneboxes
+  # We can pass several creating options to a post via attributes
+  attr_accessor :image_sizes, :quoted_post_numbers, :no_bump, :invalidate_oneboxes, :cooking_options
 
   SHORT_POST_CHARS = 1200
 
@@ -44,6 +47,7 @@ class Post < ActiveRecord::Base
   scope :public_posts, -> { joins(:topic).where('topics.archetype <> ?', Archetype.private_message) }
   scope :private_posts, -> { joins(:topic).where('topics.archetype = ?', Archetype.private_message) }
   scope :with_topic_subtype, ->(subtype) { joins(:topic).where('topics.subtype = ?', subtype) }
+  scope :without_nuked_users, -> { where(nuked_user: false) }
 
   def self.hidden_reasons
     @hidden_reasons ||= Enum.new(:flag_threshold_reached, :flag_threshold_reached_again, :new_user_spam_threshold_reached)
@@ -53,9 +57,9 @@ class Post < ActiveRecord::Base
     @types ||= Enum.new(:regular, :moderator_action)
   end
 
-  def trash!
+  def trash!(trashed_by=nil)
     self.topic_links.each(&:destroy)
-    super
+    super(trashed_by)
   end
 
   def recover!
@@ -71,7 +75,7 @@ class Post < ActiveRecord::Base
 
   def raw_hash
     return if raw.blank?
-    Digest::SHA1.hexdigest(raw.gsub(/\s+/, "").downcase)
+    Digest::SHA1.hexdigest(raw.gsub(/\s+/, ""))
   end
 
   def reset_cooked
@@ -87,7 +91,7 @@ class Post < ActiveRecord::Base
     @post_analyzer = PostAnalyzer.new(raw, topic_id)
   end
 
-  %w{raw_mentions linked_hosts image_count link_count raw_links}.each do |attr|
+  %w{raw_mentions linked_hosts image_count attachment_count link_count raw_links}.each do |attr|
     define_method(attr) do
       PostAnalyzer.new(raw, topic_id).send(attr)
     end
@@ -261,12 +265,6 @@ class Post < ActiveRecord::Base
     PostCreator.before_create_tasks(self)
   end
 
-  # TODO: Move some of this into an asynchronous job?
-  # TODO: Move into PostCreator
-  after_create do
-    PostCreator.after_create_tasks(self)
-  end
-
   # This calculates the geometric mean of the post timings and stores it along with
   # each post.
   def self.calculate_avg_time
@@ -365,7 +363,7 @@ class Post < ActiveRecord::Base
     return if post.nil?
     post_reply = post.post_replies.new(reply_id: id)
     if post_reply.save
-      Post.update_all ['reply_count = reply_count + 1'], id: post.id
+      Post.where(id: post.id).update_all ['reply_count = reply_count + 1']
     end
   end
 end
@@ -409,6 +407,9 @@ end
 #  reply_to_user_id        :integer
 #  percent_rank            :float            default(1.0)
 #  notify_user_count       :integer          default(0), not null
+#  like_score              :integer          default(0), not null
+#  deleted_by_id           :integer
+#  nuked_user              :boolean          default(FALSE)
 #
 # Indexes
 #

@@ -1,36 +1,38 @@
 class SessionController < ApplicationController
-  # we need to allow account login with bad CSRF tokens, if people are caching, the CSRF token on the
-  #  page is going to be empty, this means that server will see an invalid CSRF and blow the session
-  #  once that happens you can't log in with social
-  skip_before_filter :verify_authenticity_token, only: [:create]
+
   skip_before_filter :redirect_to_login_if_required
+
+  def csrf
+    render json: {csrf: form_authenticity_token }
+  end
 
   def create
     params.require(:login)
     params.require(:password)
 
-    login = params[:login]
-    login = login[1..-1] if login[0] == "@"
+    login    = params[:login].strip
+    password = params[:password]
+    login    = login[1..-1] if login[0] == "@"
 
-    if login =~ /@/
-      @user = User.where(email: Email.downcase(login)).first
-    else
-      @user = User.where(username_lower: login.downcase).first
-    end
+    @user = User.find_by_username_or_email(login)
 
     if @user.present?
 
       # If the site requires user approval and the user is not approved yet
-      if SiteSetting.must_approve_users? && !@user.approved?
+      if SiteSetting.must_approve_users? && !@user.approved? && !@user.admin?
         render json: {error: I18n.t("login.not_approved")}
         return
       end
 
       # If their password is correct
-      if @user.confirm_password?(params[:password])
+      if @user.confirm_password?(password)
 
         if @user.is_banned?
-          render json: { error: I18n.t("login.banned", {date: I18n.l(@user.banned_till, format: :date_only)}) }
+          if reason = @user.ban_reason
+            render json: { error: I18n.t("login.banned_with_reason", {date: I18n.l(@user.banned_till, format: :date_only), reason: reason}) }
+          else
+            render json: { error: I18n.t("login.banned", {date: I18n.l(@user.banned_till, format: :date_only)}) }
+          end
           return
         end
 
@@ -56,7 +58,7 @@ class SessionController < ApplicationController
   def forgot_password
     params.require(:login)
 
-    user = User.where('username_lower = :username or email = :email', username: params[:login].downcase, email: Email.downcase(params[:login])).first
+    user = User.find_by_username_or_email(params[:login])
     if user.present?
       email_token = user.email_tokens.create(email: user.email)
       Jobs.enqueue(:user_email, type: :forgot_password, user_id: user.id, email_token: email_token.token)
@@ -66,8 +68,8 @@ class SessionController < ApplicationController
   end
 
   def destroy
-    session[:current_user_id] = nil
-    cookies[:_t] = nil
+    reset_session
+    log_off_user
     render nothing: true
   end
 

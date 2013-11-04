@@ -8,6 +8,22 @@
 **/
 Discourse.UserRoute = Discourse.Route.extend({
 
+  actions: {
+    logout: function() {
+      Discourse.logout();
+    },
+
+    composePrivateMessage: function() {
+      var user = this.modelFor('user');
+      return this.controllerFor('composer').open({
+        action: Discourse.Composer.PRIVATE_MESSAGE,
+        usernames: user.get('username'),
+        archetypeId: 'private_message',
+        draftKey: 'new_private_message'
+      });
+    }
+  },
+
   model: function(params) {
 
     // If we're viewing the currently logged in user, return that object
@@ -51,6 +67,5 @@ Discourse.UserRoute = Discourse.Route.extend({
     // Remove the search context
     this.controllerFor('search').set('searchContext', null);
   }
-
 
 });

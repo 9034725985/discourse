@@ -26,8 +26,15 @@ Discourse.AdminUserRoute = Discourse.Route.extend({
     adminUser.loadDetails().then(function () {
       adminUser.setOriginalTrustLevel();
       controller.set('model', adminUser);
+      window.scrollTo(0, 0);
     });
+  },
 
+  actions: {
+    showBanModal: function(user) {
+      Discourse.Route.showModal(this, 'admin_ban_user', user);
+      this.controllerFor('modal').set('modalClass', 'ban-user-modal');
+    }
   }
 
 });

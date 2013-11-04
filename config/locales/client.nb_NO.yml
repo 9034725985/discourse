@@ -247,8 +247,6 @@ nb_NO:
         title: "Siste IP Addresse"
       avatar:
         title: "Profilbilde"
-        instructions: "Vi bruker <a href='https://gravatar.com' target='_blank'>Gravatar</a> basert på din email for profilbilder."
-
       filters:
         all: "Alle"
 
@@ -430,12 +428,8 @@ nb_NO:
       title: "Legg til Bilde"
       from_my_computer: "Fra Min Enhet"
       from_the_web: "Fra Nettet"
-      add_title: "Legg til Bilde"
-      remote_title: "eksternt bilde"
       remote_tip: "skriv inn addressen til et bilde, f.eks. http://example.com/image.jpg"
-      local_title: "lokalt bilde"
       local_tip: "klikk for å velge et bilde fra din enhet."
-      upload_title: "Last opp"
       uploading: "Laster opp bilde"
 
     search:
@@ -484,7 +478,6 @@ nb_NO:
       title: Topic Rank Details
 
     topic:
-      create_in: 'Lag {{categoryName}} Emne'
       create: 'Lag Emne'
       create_long: 'Lag ett nytt Emne'
       private_message: 'Start enn private melding'
@@ -680,7 +673,7 @@ nb_NO:
         create: "Beklager, det oppstod en feil ved å publisere ditt innlegg. Vennligst prøv igjen."
         edit: "Beklager, det oppstod en feil ved redigeringen av ditt innlegg. Vennligst prøv igjen."
         upload: "Sorry, there was an error uploading that file. Please try again."
-        upload_too_large: "Beklager, filen du prøve å laste opp er for stor (maks størrelse er {{max_size_kb}}kb), vennligst reduser størrelsen og prøv igjen."
+        image_too_large: "Beklager, filen du prøve å laste opp er for stor (maks størrelse er {{max_size_kb}}kb), vennligst reduser størrelsen og prøv igjen."
         too_many_uploads: "Beklager, du kan bare laste opp ett bilde om gangen."
 
       abandon: "Er du sikker på at du vil forlate innlegget ditt?"
@@ -803,7 +796,6 @@ nb_NO:
       none: '(no category)'
       edit: 'rediger'
       edit_long: "Rediger Kategori"
-      edit_uncategorized: "Rediger Ukategorisert"
       view: 'Se Emner i Kategori'
       general: 'Generellt'
       settings: 'Innstillinger'

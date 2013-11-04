@@ -14,6 +14,10 @@ function integration(name) {
   });
 }
 
+function testController(klass, model) {
+  return klass.create({model: model, container: Discourse.__container__});
+}
+
 function controllerFor(controller, model) {
   var controller = Discourse.__container__.lookup('controller:' + controller);
   if (model) { controller.set('model', model ); }
@@ -21,12 +25,10 @@ function controllerFor(controller, model) {
 }
 
 function asyncTestDiscourse(text, func) {
-
   asyncTest(text, function () {
-
-    var qunitContext = this;
+    var self = this;
     Ember.run(function () {
-      func.call(qunitContext);
+      func.call(self);
     });
   });
 }

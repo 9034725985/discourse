@@ -81,7 +81,7 @@ Discourse.UserAction = Discourse.Model.extend({
       replyUrl: this.get('replyUrl'),
       postUrl: this.get('postUrl'),
       topicUrl: this.get('replyUrl'),
-      user: this.get('name'),
+      user: this.get('presentName'),
       post_number: '#' + this.get('reply_to_post_number'),
       user1Url: this.get('userUrl'),
       user2Url: this.get('targetUserUrl'),
@@ -91,15 +91,21 @@ Discourse.UserAction = Discourse.Model.extend({
   }.property('descriptionKey'),
 
   sameUser: function() {
-    return this.get('username') === Discourse.User.current('username');
+    return this.get('username') === Discourse.User.currentProp('username');
   }.property('username'),
 
   targetUser: function() {
-    return this.get('target_username') === Discourse.User.current('username');
+    return this.get('target_username') === Discourse.User.currentProp('username');
   }.property('target_username'),
 
+  presentName: Em.computed.any('name', 'username'),
+
   targetUserUrl: Discourse.computed.url('target_username', '/users/%@'),
-  userUrl: Discourse.computed.url('username', '/users/%@'),
+  usernameLower: function() {
+    return this.get('username').toLowerCase();
+  }.property('username'),
+
+  userUrl: Discourse.computed.url('usernameLower', '/users/%@'),
 
   postUrl: function() {
     return Discourse.Utilities.postUrl(this.get('slug'), this.get('topic_id'), this.get('post_number'));

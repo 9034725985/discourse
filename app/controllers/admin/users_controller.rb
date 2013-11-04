@@ -4,7 +4,21 @@ require_dependency 'boost_trust_level'
 
 class Admin::UsersController < Admin::AdminController
 
-  before_filter :fetch_user, only: [:ban, :unban, :refresh_browsers, :revoke_admin, :grant_admin, :revoke_moderation, :grant_moderation, :approve, :activate, :deactivate, :block, :unblock, :trust_level]
+  before_filter :fetch_user, only: [:ban,
+                                    :unban,
+                                    :refresh_browsers,
+                                    :revoke_admin,
+                                    :grant_admin,
+                                    :revoke_moderation,
+                                    :grant_moderation,
+                                    :approve,
+                                    :activate,
+                                    :deactivate,
+                                    :block,
+                                    :unblock,
+                                    :trust_level,
+                                    :generate_api_key,
+                                    :revoke_api_key]
 
   def index
     query = ::AdminUserIndexQuery.new(params)
@@ -28,7 +42,7 @@ class Admin::UsersController < Admin::AdminController
     @user.banned_till = params[:duration].to_i.days.from_now
     @user.banned_at = DateTime.now
     @user.save!
-    # TODO logging
+    StaffActionLogger.new(current_user).log_user_ban(@user, params[:reason])
     render nothing: true
   end
 
@@ -37,7 +51,7 @@ class Admin::UsersController < Admin::AdminController
     @user.banned_till = nil
     @user.banned_at = nil
     @user.save!
-    # TODO logging
+    StaffActionLogger.new(current_user).log_user_unban(@user)
     render nothing: true
   end
 
@@ -49,6 +63,16 @@ class Admin::UsersController < Admin::AdminController
   def revoke_admin
     guardian.ensure_can_revoke_admin!(@user)
     @user.revoke_admin!
+    render nothing: true
+  end
+
+  def generate_api_key
+    api_key = @user.generate_api_key(current_user)
+    render_serialized(api_key, ApiKeySerializer)
+  end
+
+  def revoke_api_key
+    @user.revoke_api_key
     render nothing: true
   end
 
@@ -72,7 +96,7 @@ class Admin::UsersController < Admin::AdminController
 
   def trust_level
     guardian.ensure_can_change_trust_level!(@user)
-    logger = AdminLogger.new(current_user)
+    logger = StaffActionLogger.new(current_user)
     BoostTrustLevel.new(user: @user, level: params[:level], logger: logger).save!
     render_serialized(@user, AdminUserSerializer)
   end
@@ -114,13 +138,26 @@ class Admin::UsersController < Admin::AdminController
     render nothing: true
   end
 
+  def reject_bulk
+    d = UserDestroyer.new(current_user)
+    success_count = 0
+    User.where(id: params[:users]).each do |u|
+      success_count += 1 if guardian.can_delete_user?(u) and d.destroy(u, params.slice(:context)) rescue UserDestroyer::PostsExistError
+    end
+    render json: {success: success_count, failed: (params[:users].try(:size) || 0) - success_count}
+  end
+
   def destroy
     user = User.where(id: params[:id]).first
     guardian.ensure_can_delete_user!(user)
-    if UserDestroyer.new(current_user).destroy(user)
-      render json: {deleted: true}
-    else
-      render json: {deleted: false, user: AdminDetailedUserSerializer.new(user, root: false).as_json}
+    begin
+      if UserDestroyer.new(current_user).destroy(user, params.slice(:delete_posts, :block_email, :block_urls, :block_ip, :context))
+        render json: {deleted: true}
+      else
+        render json: {deleted: false, user: AdminDetailedUserSerializer.new(user, root: false).as_json}
+      end
+    rescue UserDestroyer::PostsExistError
+      raise Discourse::InvalidAccess.new("User #{user.username} has #{user.post_count} posts, so can't be deleted.")
     end
   end
 

@@ -13,7 +13,7 @@
         </p>
         <p class="actions">
           <small>{{i18n admin.dashboard.last_checked}}: {{problemsTimestamp}}</small>
-          <button {{action loadProblems}} class="btn btn-small"><i class="icon icon-refresh"></i>{{i18n admin.dashboard.refresh_problems}}</button>
+          <button {{action refreshProblems}} class="btn btn-small"><i class="icon icon-refresh"></i>{{i18n admin.dashboard.refresh_problems}}</button>
         </p>
       </div>
       <div class="clearfix"></div>
@@ -25,7 +25,7 @@
         <div class="problem-messages">
           <p>
             {{i18n admin.dashboard.no_problems}}
-            <button {{action loadProblems}} class="btn btn-small"><i class="icon icon-refresh"></i>{{i18n admin.dashboard.refresh_problems}}</button>
+            <button {{action refreshProblems}} class="btn btn-small"><i class="icon icon-refresh"></i>{{i18n admin.dashboard.refresh_problems}}</button>
           </p>
         </div>
         <div class="clearfix"></div>
@@ -121,15 +121,15 @@
     <table>
       <tr>
         <td class="title"><i class='icon icon-trophy'></i> {{i18n admin.dashboard.admins}}</td>
-        <td class="value">{{#linkTo 'adminUsersList.admins'}}{{admins}}{{/linkTo}}</td>
+        <td class="value">{{#link-to 'adminUsersList.admins'}}{{admins}}{{/link-to}}</td>
         <td class="title"><i class='icon icon-ban-circle'></i> {{i18n admin.dashboard.banned}}</td>
-        <td class="value">{{#linkTo 'adminUsersList.banned'}}{{banned}}{{/linkTo}}</td>
+        <td class="value">{{#link-to 'adminUsersList.banned'}}{{banned}}{{/link-to}}</td>
       </tr>
       <tr>
         <td class="title"><i class='icon icon-magic'></i> {{i18n admin.dashboard.moderators}}</td>
-        <td class="value">{{#linkTo 'adminUsersList.moderators'}}{{moderators}}{{/linkTo}}</td>
+        <td class="value">{{#link-to 'adminUsersList.moderators'}}{{moderators}}{{/link-to}}</td>
         <td class="title"><i class='icon icon-ban-circle'></i> {{i18n admin.dashboard.blocked}}</td>
-        <td class="value">{{#linkTo 'adminUsersList.blocked'}}{{blocked}}{{/linkTo}}</td>
+        <td class="value">{{#link-to 'adminUsersList.blocked'}}{{blocked}}{{/link-to}}</td>
       </tr>
     </table>
   </div>
@@ -214,7 +214,13 @@
         {{#each data in top_referred_topics.data}}
           <tbody>
             <tr>
-              <td class="title"><a href="/t/{{unbound data.topic_slug}}/{{unbound data.topic_id}}">{{shorten data.topic_title}}</a></td>
+              <td class="title">
+                <div class="referred-topic-title">
+                  <div class="overflow-ellipsis">
+                    <a href="/t/{{unbound data.topic_slug}}/{{unbound data.topic_id}}">{{data.topic_title}}</a>
+                  </div>
+                </div>
+              </td>
               <td class="value">{{data.num_clicks}}</td>
             </tr>
           </tbody>
@@ -230,7 +236,6 @@
           <th class="title">{{top_traffic_sources.title}} ({{i18n admin.dashboard.reports.last_30_days}})</th>
           <th>{{top_traffic_sources.ytitles.num_clicks}}</th>
           <th>{{top_traffic_sources.ytitles.num_topics}}</th>
-          <th>{{top_traffic_sources.ytitles.num_users}}</th>
         </tr>
       </thead>
       {{#unless loading}}
@@ -240,7 +245,6 @@
               <td class="title">{{domain}}</td>
               <td class="value">{{num_clicks}}</td>
               <td class="value">{{num_topics}}</td>
-              <td class="value">{{num_users}}</td>
             </tr>
           </tbody>
         {{/each}}
@@ -261,7 +265,7 @@
         {{#each top_referrers.data}}
           <tbody>
             <tr>
-              <td class="title">{{#linkTo 'adminUser' this}}{{unbound username}}{{/linkTo}}</td>
+              <td class="title">{{#link-to 'adminUser' this}}{{unbound username}}{{/link-to}}</td>
               <td class="value">{{num_clicks}}</td>
               <td class="value">{{num_topics}}</td>
             </tr>
@@ -270,5 +274,11 @@
       {{/unless}}
     </table>
   </div>
+</div>
+<div class='clearfix'></div>
+
+<div class="dashboard-stats pull-right">
+  <div class="pull-right">{{i18n admin.dashboard.last_updated}} {{updatedTimestamp}}</div>
+  <div class='clearfix'></div>
 </div>
 <div class='clearfix'></div>

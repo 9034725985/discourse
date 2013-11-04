@@ -15,6 +15,10 @@ Discourse.ListTopicsController = Discourse.ObjectController.extend({
 
   latest: Ember.computed.equal('filter', 'latest'),
 
+  categories: function() {
+    return Discourse.Category.list();
+  }.property(),
+
   draftLoaded: function() {
     var draft = this.get('content.draft');
     if (draft) {
@@ -27,32 +31,34 @@ Discourse.ListTopicsController = Discourse.ObjectController.extend({
     }
   }.observes('content.draft'),
 
-  // Star a topic
-  toggleStar: function(topic) {
-    topic.toggleStar();
-  },
+  actions: {
+    // Star a topic
+    toggleStar: function(topic) {
+      topic.toggleStar();
+    },
 
-  // clear a pinned topic
-  clearPin: function(topic) {
-    topic.clearPin();
-  },
+    // clear a pinned topic
+    clearPin: function(topic) {
+      topic.clearPin();
+    },
 
-  toggleRankDetails: function() {
-    this.toggleProperty('rankDetailsVisible');
-  },
+    toggleRankDetails: function() {
+      this.toggleProperty('rankDetailsVisible');
+    },
 
-  createTopic: function() {
-    this.get('controllers.list').createTopic();
-  },
+    createTopic: function() {
+      this.get('controllers.list').send('createTopic');
+    },
 
-  // Show newly inserted topics
-  showInserted: function(e) {
-    var tracker = Discourse.TopicTrackingState.current();
+    // Show newly inserted topics
+    showInserted: function(e) {
+      var tracker = Discourse.TopicTrackingState.current();
 
-    // Move inserted into topics
-    this.get('content').loadBefore(tracker.get('newIncoming'));
-    tracker.resetTracking();
-    return false;
+      // Move inserted into topics
+      this.get('content').loadBefore(tracker.get('newIncoming'));
+      tracker.resetTracking();
+      return false;
+    }
   },
 
   allLoaded: function() {
@@ -81,11 +87,11 @@ Discourse.ListTopicsController = Discourse.ObjectController.extend({
   }.property('allLoaded', 'topics.length'),
 
   loadMore: function() {
-    this.set('loadingMore', true);
-    var listTopicsController = this;
-    return this.get('model').loadMoreTopics().then(function(hasMoreTopics) {
-      listTopicsController.set('loadingMore', false);
-      return hasMoreTopics;
+    var topicList = this.get('model');
+    return topicList.loadMoreTopics().then(function(moreUrl) {
+      if (!Em.isEmpty(moreUrl)) {
+        Discourse.URL.replaceState(Discourse.getURL("/") + topicList.get('filter') + "/more");
+      }
     });
   }
 

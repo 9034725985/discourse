@@ -1,19 +1,31 @@
 require 'current_user'
-require 'canonical_url'
+require_dependency 'canonical_url'
 require_dependency 'discourse'
 require_dependency 'custom_renderer'
-require 'archetype'
+require_dependency 'archetype'
 require_dependency 'rate_limiter'
 
 class ApplicationController < ActionController::Base
   include CurrentUser
-
   include CanonicalURL::ControllerExtensions
 
   serialization_scope :guardian
 
   protect_from_forgery
 
+  # Default Rails 3.2 lets the request through with a blank session
+  #  we are being more pedantic here and nulling session / current_user
+  #  and then raising a CSRF exception
+  def handle_unverified_request
+    # NOTE: API key is secret, having it invalidates the need for a CSRF token
+    unless is_api?
+      super
+      clear_current_user
+      render text: "['BAD CSRF']", status: 403
+    end
+  end
+
+  before_filter :set_mobile_view
   before_filter :inject_preview_style
   before_filter :block_if_maintenance_mode
   before_filter :authorize_mini_profiler
@@ -94,23 +106,19 @@ class ApplicationController < ActionController::Base
 
   # If we are rendering HTML, preload the session data
   def preload_json
-
     # We don't preload JSON on xhr or JSON request
     return if request.xhr?
 
-    if guardian.current_user
-      guardian.current_user.sync_notification_channel_position
+    preload_anonymous_data
+
+    if current_user
+      preload_current_user_data
+      current_user.sync_notification_channel_position
     end
+  end
 
-    store_preloaded("site", Site.cached_json(guardian))
-
-    if current_user.present?
-      store_preloaded("currentUser", MultiJson.dump(CurrentUserSerializer.new(current_user, root: false)))
-
-      serializer = ActiveModel::ArraySerializer.new(TopicTrackingState.report([current_user.id]), each_serializer: TopicTrackingStateSerializer)
-      store_preloaded("topicTrackingStates", MultiJson.dump(serializer))
-    end
-    store_preloaded("siteSettings", SiteSetting.client_settings_json)
+  def set_mobile_view
+    session[:mobile_view] = params[:mobile_view] if params.has_key?(:mobile_view)
   end
 
 
@@ -147,34 +155,14 @@ class ApplicationController < ActionController::Base
   end
 
   def can_cache_content?
-    # Don't cache unless we're in production mode
-    return false unless Rails.env.production? || Rails.env == "profile"
-
-    # Don't cache logged in users
-    return false if current_user.present?
-
-    true
+    !current_user.present?
   end
 
   # Our custom cache method
   def discourse_expires_in(time_length)
     return unless can_cache_content?
-    expires_in time_length, public: true
+    Middleware::AnonymousCache.anon_cache(request.env, 1.minute)
   end
-
-  # Helper method - if no logged in user (anonymous), use Rails' conditional GET
-  # support. Should be very fast behind a cache.
-  def anonymous_etag(*args)
-    if can_cache_content?
-      yield if stale?(*args)
-
-      # Add a one minute expiry
-      expires_in 1.minute, public: true
-    else
-      yield
-    end
-  end
-
 
   def fetch_user_from_params
     username_lower = params[:username].downcase
@@ -187,7 +175,28 @@ class ApplicationController < ActionController::Base
     user
   end
 
+  def post_ids_including_replies
+    post_ids = params[:post_ids].map {|p| p.to_i}
+    if params[:reply_post_ids]
+      post_ids << PostReply.where(post_id: params[:reply_post_ids].map {|p| p.to_i}).pluck(:reply_id)
+      post_ids.flatten!
+      post_ids.uniq!
+    end
+    post_ids
+  end
+
   private
+
+    def preload_anonymous_data
+      store_preloaded("site", Site.cached_json(guardian))
+      store_preloaded("siteSettings", SiteSetting.client_settings_json)
+    end
+
+    def preload_current_user_data
+      store_preloaded("currentUser", MultiJson.dump(CurrentUserSerializer.new(current_user, root: false)))
+      serializer = ActiveModel::ArraySerializer.new(TopicTrackingState.report([current_user.id]), each_serializer: TopicTrackingStateSerializer)
+      store_preloaded("topicTrackingStates", MultiJson.dump(serializer))
+    end
 
     def render_json_error(obj)
       if obj.present?
@@ -245,11 +254,9 @@ class ApplicationController < ActionController::Base
     end
 
     def check_xhr
-      unless (controller_name == 'forums' || controller_name == 'user_open_ids')
-        # bypass xhr check on PUT / POST / DELETE provided api key is there, otherwise calling api is annoying
-        return if !request.get? && api_key_valid?
-        raise RenderEmpty.new unless ((request.format && request.format.json?) || request.xhr?)
-      end
+      # bypass xhr check on PUT / POST / DELETE provided api key is there, otherwise calling api is annoying
+      return if !request.get? && api_key_valid?
+      raise RenderEmpty.new unless ((request.format && request.format.json?) || request.xhr?)
     end
 
     def ensure_logged_in
@@ -272,7 +279,7 @@ class ApplicationController < ActionController::Base
   protected
 
     def api_key_valid?
-      request["api_key"] && SiteSetting.api_key_valid?(request["api_key"])
+      request["api_key"] && ApiKey.where(key: request["api_key"]).exists?
     end
 
     # returns an array of integers given a param key

@@ -10,10 +10,23 @@ describe CookedPostProcessor do
     let(:post_process) { sequence("post_process") }
 
     it "post process in sequence" do
+      cpp.expects(:clean_up_reverse_index).in_sequence(post_process)
       cpp.expects(:post_process_attachments).in_sequence(post_process)
       cpp.expects(:post_process_images).in_sequence(post_process)
       cpp.expects(:post_process_oneboxes).in_sequence(post_process)
       cpp.post_process
+    end
+
+  end
+
+  context "clean_up_reverse_index" do
+
+    let(:post) { build(:post) }
+    let(:cpp) { CookedPostProcessor.new(post) }
+
+    it "cleans the reverse index up for the current post" do
+      PostUpload.expects(:delete_all).with(post_id: post.id)
+      cpp.clean_up_reverse_index
     end
 
   end
@@ -31,9 +44,7 @@ describe CookedPostProcessor do
         Upload.expects(:get_from_url).returns(upload)
         cpp.post_process_attachments
         # ensures absolute urls on attachment
-        cpp.html.should =~ /#{LocalStore.base_url}/
-        # ensure name is present
-        cpp.html.should =~ /archive.zip/
+        cpp.html.should =~ /#{Discourse.store.absolute_base_url}/
         # keeps the reverse index up to date
         post.uploads.reload
         post.uploads.count.should == 1
@@ -74,7 +85,7 @@ describe CookedPostProcessor do
         Upload.expects(:get_from_url).returns(upload)
         cpp.post_process_images
         # ensures absolute urls on uploaded images
-        cpp.html.should =~ /#{LocalStore.base_url}/
+        cpp.html.should =~ /#{LocalStore.new.absolute_base_url}/
         # dirty
         cpp.should be_dirty
         # keeps the reverse index up to date
@@ -90,11 +101,6 @@ describe CookedPostProcessor do
       let(:cpp) { CookedPostProcessor.new(post, image_sizes: {'http://foo.bar/image.png' => {'width' => 111, 'height' => 222}}) }
 
       before { FastImage.stubs(:size).returns([150, 250]) }
-
-      it "doesn't call image_dimensions because it knows the size" do
-        cpp.expects(:image_dimensions).never
-        cpp.post_process_images
-      end
 
       it "adds the width from the image sizes provided" do
         cpp.post_process_images
@@ -125,6 +131,7 @@ describe CookedPostProcessor do
       let(:cpp) { CookedPostProcessor.new(post) }
 
       before do
+        SiteSetting.stubs(:max_image_height).returns(2000)
         SiteSetting.stubs(:create_thumbnails?).returns(true)
         Upload.expects(:get_from_url).returns(upload)
         cpp.stubs(:associate_to_post)
@@ -137,8 +144,8 @@ describe CookedPostProcessor do
 
       it "generates overlay information" do
         cpp.post_process_images
-        cpp.html.should match_html '<div><a href="http://test.localhost/uploads/default/1/1234567890123456.jpg" class="lightbox"><img src="http://test.localhost/uploads/default/_optimized/da3/9a3/ee5e6b4b0d3_100x200.jpg" width="690" height="1380"><div class="meta">
-<span class="filename">uploaded.jpg</span><span class="informations">1000x2000 • 1.21 KB</span><span class="expand"></span>
+        cpp.html.should match_html '<div><a href="http://test.localhost/uploads/default/1/1234567890123456.jpg" class="lightbox"><img src="http://test.localhost/uploads/default/_optimized/da3/9a3/ee5e6b4b0d_690x1380.jpg" width="690" height="1380"><div class="meta">
+<span class="filename">uploaded.jpg</span><span class="informations">1000x2000 1.21 KB</span><span class="expand"></span>
 </div></a></div>'
         cpp.should be_dirty
       end
@@ -203,31 +210,12 @@ describe CookedPostProcessor do
 
   end
 
-  context "image_dimensions" do
-
-    let(:post) { build(:post) }
-    let(:cpp) { CookedPostProcessor.new(post) }
-
-    it "calls the resizer" do
-      SiteSetting.stubs(:max_image_width).returns(200)
-      cpp.expects(:get_size).returns([1000, 2000])
-      cpp.image_dimensions("http://foo.bar/image.png").should == [200, 400]
-    end
-
-    it "doesn't call the resizer when there is no size" do
-      cpp.expects(:get_size).returns(nil)
-      cpp.image_dimensions("http://foo.bar/image.png").should == nil
-    end
-
-  end
-
   context "get_size" do
 
     let(:post) { build(:post) }
     let(:cpp) { CookedPostProcessor.new(post) }
 
     it "ensures s3 urls have a default scheme" do
-      Upload.stubs(:is_on_s3?).returns(true)
       FastImage.stubs(:size)
       cpp.expects(:is_valid_image_uri?).with("http://bucket.s3.aws.amazon.com/image.jpg")
       cpp.get_size("//bucket.s3.aws.amazon.com/image.jpg")
@@ -239,13 +227,15 @@ describe CookedPostProcessor do
 
       it "doesn't call FastImage" do
         FastImage.expects(:size).never
-        cpp.get_size("http://foo.bar/image.png").should == nil
+        cpp.get_size("http://foo.bar/image1.png").should == nil
       end
 
-      it "is always allowed to crawled our own images" do
-        Upload.expects(:has_been_uploaded?).returns(true)
+      it "is always allowed to crawl our own images" do
+        store = {}
+        Discourse.expects(:store).returns(store)
+        store.expects(:has_been_uploaded?).returns(true)
         FastImage.expects(:size).returns([100, 200])
-        cpp.get_size("http://foo.bar/image.png").should == [100, 200]
+        cpp.get_size("http://foo.bar/image2.png").should == [100, 200]
       end
 
     end
@@ -253,8 +243,8 @@ describe CookedPostProcessor do
     it "caches the results" do
       SiteSetting.stubs(:crawl_images?).returns(true)
       FastImage.expects(:size).returns([200, 400])
-      cpp.get_size("http://foo.bar/image.png")
-      cpp.get_size("http://foo.bar/image.png").should == [200, 400]
+      cpp.get_size("http://foo.bar/image3.png")
+      cpp.get_size("http://foo.bar/image3.png").should == [200, 400]
     end
 
   end

@@ -12,7 +12,7 @@ class PostDestroyer
             WHERE t.deleted_at IS NOT NULL AND
                   t.id = posts.topic_id
         )")
-        .where("updated_at < ? AND post_number > 1", 1.day.ago)
+        .where("updated_at < ? AND post_number > 1", SiteSetting.delete_removed_posts_after.hours.ago)
         .where("NOT EXISTS (
                   SELECT 1
                   FROM post_actions pa
@@ -53,26 +53,25 @@ class PostDestroyer
   # When a post is properly deleted. Well, it's still soft deleted, but it will no longer
   # show up in the topic
   def staff_destroyed
-    # the topic may be trashed, skip it
-    return unless @post.topic
-
     Post.transaction do
 
-      # Update the last post id to the previous post if it exists
-      last_post = Post.where("topic_id = ? and id <> ?", @post.topic_id, @post.id).order('created_at desc').limit(1).first
-      if last_post.present?
-        @post.topic.update_attributes(last_posted_at: last_post.created_at,
-                                      last_post_user_id: last_post.user_id,
-                                      highest_post_number: last_post.post_number)
+      if @post.topic
+        # Update the last post id to the previous post if it exists
+        last_post = Post.where("topic_id = ? and id <> ?", @post.topic_id, @post.id).order('created_at desc').limit(1).first
+        if last_post.present?
+          @post.topic.update_attributes(last_posted_at: last_post.created_at,
+                                        last_post_user_id: last_post.user_id,
+                                        highest_post_number: last_post.post_number)
 
-        # If the poster doesn't have any other posts in the topic, clear their posted flag
-        unless Post.exists?(["topic_id = ? and user_id = ? and id <> ?", @post.topic_id, @post.user_id, @post.id])
-          TopicUser.where(topic_id: @post.topic_id, user_id: @post.user_id).update_all 'posted = false'
+          # If the poster doesn't have any other posts in the topic, clear their posted flag
+          unless Post.exists?(["topic_id = ? and user_id = ? and id <> ?", @post.topic_id, @post.user_id, @post.id])
+            TopicUser.where(topic_id: @post.topic_id, user_id: @post.user_id).update_all 'posted = false'
+          end
         end
-      end
 
-      # Feature users in the topic
-      Jobs.enqueue(:feature_topic_users, topic_id: @post.topic_id, except_post_id: @post.id)
+        # Feature users in the topic
+        Jobs.enqueue(:feature_topic_users, topic_id: @post.topic_id, except_post_id: @post.id)
+      end
 
       @post.post_actions.each do |pa|
         pa.trash!(@user)
@@ -83,7 +82,7 @@ class PostDestroyer
 
       @post.trash!(@user)
 
-      Topic.reset_highest(@post.topic_id)
+      Topic.reset_highest(@post.topic_id) if @post.topic
 
       @post.update_flagged_posts_count
 
@@ -98,14 +97,23 @@ class PostDestroyer
       # Remove any notifications that point to this deleted post
       Notification.delete_all topic_id: @post.topic_id, post_number: @post.post_number
 
-      @post.topic.trash!(@user) if @post.post_number == 1
+      @post.topic.trash!(@user) if @post.topic and @post.post_number == 1
+
+      if @post.topic && @post.topic.category && @post.id == @post.topic.category.latest_post_id
+        @post.topic.category.update_latest
+      end
+
+      if @post.post_number == 1 && @post.topic && @post.topic.category && @post.topic_id == @post.topic.category.latest_topic_id
+        @post.topic.category.update_latest
+      end
+
     end
   end
 
   # When a user 'deletes' their own post. We just change the text.
   def user_destroyed
     Post.transaction do
-      @post.revise(@user, I18n.t('js.post.deleted_by_author'), force_new_version: true)
+      @post.revise(@user, I18n.t('js.post.deleted_by_author', count: SiteSetting.delete_removed_posts_after), force_new_version: true)
       @post.update_column(:user_deleted, true)
       @post.update_flagged_posts_count
       @post.topic_links.each(&:destroy)
@@ -115,6 +123,7 @@ class PostDestroyer
   def user_recovered
     Post.transaction do
       @post.update_column(:user_deleted, false)
+      @post.skip_unique_check = true
       @post.revise(@user, @post.versions.last.modifications["raw"][0], force_new_version: true)
       @post.update_flagged_posts_count
     end

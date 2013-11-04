@@ -191,8 +191,6 @@ sv:
         title: "Senaste IP-adress"
       avatar:
         title: "Profilbild"
-        instructions: "Vi använder <a href='https://gravatar.com' target='_blank'>Gravatar</a> för profilbilder baserat på din e-post"
-
       filters:
         all: "Alla"
 
@@ -356,10 +354,8 @@ sv:
       title: "Infoga Bild"
       from_my_computer: "Från Min Enhet"
       from_the_web: "Från Internet"
-      add_title: "Lägg Till Bild"
       remote_tip: "skriv in en adress till en bild i formen http://exempel.se/bild.jpg"
       local_tip: "klicka för att välja en bild från din enhet."
-      upload_title: "Ladda Upp"
       uploading: "Laddar upp bild"
 
     search:
@@ -404,7 +400,6 @@ sv:
       title: Trådranksdetaljer
 
     topic:
-      create_in: 'Skapa {{categoryName}}-tråd'
       create: 'Skapa Tråd'
       create_long: 'Skapa en nytt Tråd'
       private_message: 'Starta en privat konversation'
@@ -578,7 +573,7 @@ sv:
         create: "Tyvärr, det uppstod ett fel under skapandet av ditt inlägg. Var god försök igen."
         edit: "Tyvärr, det uppstod ett fel under ändringen av ditt inlägg. Var god försök igen."
         upload: "Tyvärr, det uppstod ett fel under uppladdandet av den filen. Vad god försök igen."
-        upload_too_large: "Tyvärr, filen som du försöker ladda upp är för stor (maxstorlek är {{max_size_kb}}kb), var god ändra storlek och försök igen."
+        image_too_large: "Tyvärr, filen som du försöker ladda upp är för stor (maxstorlek är {{max_size_kb}}kb), var god ändra storlek och försök igen."
         too_many_uploads: "Tyvärr, du kan bara ladda upp en bild i taget."
 
       abandon: "Är du säker på att du vill överge ditt inlägg?"

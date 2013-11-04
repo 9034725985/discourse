@@ -32,13 +32,13 @@ if rails4?
   end
 end
 
+gem 'seed-fu' , github: 'SamSaffron/seed-fu'
+
 if rails4?
-  gem 'rails', '4.0.0'
+  gem 'rails', :git => 'git://github.com/rails/rails.git', :branch => '4-0-stable'
   gem 'redis-rails', :git => 'git://github.com/SamSaffron/redis-store.git'
   gem 'rails-observers'
-  gem 'protected_attributes'
   gem 'actionpack-action_caching'
-  gem 'seed-fu' , github: 'mbleigh/seed-fu'
 else
   # we had pain with the 3.2.13 upgrade so monkey patch the security fix
   # next time around we hope to upgrade
@@ -48,16 +48,14 @@ else
   # REVIEW EVERY RELEASE
   gem 'sprockets', git: 'https://github.com/SamSaffron/sprockets.git', branch: 'rails-compat'
   gem 'redis-rails'
-  gem 'seed-fu'
   gem 'activerecord-postgres-hstore'
   gem 'active_attr'
 end
 
-gem 'redis'
 gem 'hiredis'
-gem 'em-redis'
+gem 'redis', :require => ["redis", "redis/connection/hiredis"]
 
-gem 'active_model_serializers', git: 'https://github.com/rails-api/active_model_serializers.git'
+gem 'active_model_serializers'
 
 # we had issues with latest, stick to the rev till we figure this out
 # PR that makes it all hang together welcome
@@ -66,7 +64,7 @@ gem 'ember-source', '1.0.0.rc6.2'
 gem 'handlebars-source', '1.0.12'
 gem 'barber'
 
-gem 'vestal_versions', git: 'https://github.com/zhangyuan/vestal_versions'
+gem 'vestal_versions', git: 'https://github.com/SamSaffron/vestal_versions'
 
 gem 'message_bus', git: 'https://github.com/SamSaffron/message_bus'
 gem 'rails_multisite', path: 'vendor/gems/rails_multisite'
@@ -74,7 +72,7 @@ gem 'simple_handlebars_rails', path: 'vendor/gems/simple_handlebars_rails'
 
 gem 'redcarpet', require: false
 gem 'airbrake', '3.1.2', require: false # errbit is broken with 3.1.3 for now
-gem 'clockwork', require: false
+gem 'sidetiq', '>= 0.3.6'
 gem 'eventmachine'
 gem 'fast_xs'
 gem 'fast_xor', git: 'https://github.com/CodeMonkeySteve/fast_xor.git'
@@ -98,6 +96,7 @@ gem 'openid-redis-store'
 gem 'omniauth-facebook'
 gem 'omniauth-twitter'
 gem 'omniauth-github'
+gem 'omniauth-oauth2', require: false
 gem 'omniauth-browserid', git: 'https://github.com/callahad/omniauth-browserid.git', branch: 'observer_api'
 gem 'omniauth-cas'
 gem 'oj'
@@ -115,8 +114,9 @@ gem 'sinatra', require: nil
 gem 'slim'  # required for sidekiq-web
 gem 'therubyracer', require: 'v8'
 gem 'thin', require: false
-gem 'diffy', require: false
+gem 'diffy', '>= 3.0', require: false
 gem 'highline', require: false
+gem 'rack-protection' # security
 
 # Gem that enables support for plugins. It is required.
 gem 'discourse_plugin', path: 'vendor/gems/discourse_plugin'
@@ -134,7 +134,8 @@ gem 'discourse_emoji', path: 'vendor/gems/discourse_emoji'
 group :assets do
   gem 'sass'
   gem 'sass-rails'
-  gem 'turbo-sprockets-rails3'
+  # Sam: disabling for now, having issues with our jenkins build
+  # gem 'turbo-sprockets-rails3'
   gem 'uglifier'
 end
 
@@ -144,23 +145,22 @@ group :test do
 end
 
 group :test, :development do
-  gem 'listen', require: false
+  gem 'mock_redis'
+  gem 'listen', '0.7.3', require: false
   gem 'certified', require: false
   gem 'fabrication', require: false
   gem 'qunit-rails'
-  gem 'guard-rspec', require: false
-  gem 'guard-spork', require: false
   gem 'mocha', require: false
   gem 'rb-fsevent', require: RUBY_PLATFORM =~ /darwin/i ? 'rb-fsevent' : false
   gem 'rb-inotify', '~> 0.9', require: RUBY_PLATFORM =~ /linux/i ? 'rb-inotify' : false
   gem 'rspec-rails', require: false
   gem 'shoulda', require: false
   gem 'simplecov', require: false
-  gem 'terminal-notifier-guard', require: false
   gem 'timecop'
   gem 'rspec-given'
   gem 'pry-rails'
   gem 'pry-nav'
+  gem 'spork-rails', :github => 'sporkrb/spork-rails'
 end
 
 group :development do
@@ -184,15 +184,14 @@ gem 'lru_redux'
 # IMPORTANT: mini profiler monkey patches, so it better be required last
 #  If you want to amend mini profiler to do the monkey patches in the railstie
 #  we are open to it. by deferring require to the initializer we can configure disourse installs without it
-gem 'rack-mini-profiler', '0.1.27', require: false  # require: false #, git: 'git://github.com/SamSaffron/MiniProfiler'
+
+gem 'flamegraph', git: 'https://github.com/SamSaffron/flamegraph.git', require: false
+gem 'rack-mini-profiler',  git: 'https://github.com/MiniProfiler/rack-mini-profiler.git', require: false
 
 # used for caching, optional
-# redis-rack-cache is missing a sane expiry policy, it hogs redis
-# https://github.com/jodosha/redis-store/pull/183
-gem 'redis-rack-cache', git: 'https://github.com/SamSaffron/redis-rack-cache.git', require: false
-gem 'rack-cache', require: false
 gem 'rack-cors', require: false
 gem 'unicorn', require: false
+gem 'puma', require: false
 
 # perftools only works on 1.9 atm
 group :profile do

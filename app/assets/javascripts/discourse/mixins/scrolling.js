@@ -24,7 +24,7 @@ Discourse.Scrolling = Em.Mixin.create({
     if (opts.debounce) {
       onScrollMethod = Discourse.debounce(function() {
         return scrollingMixin.scrolled();
-      }, 100);
+      }, opts.debounce);
     } else {
       onScrollMethod = function() {
         return scrollingMixin.scrolled();
@@ -35,7 +35,7 @@ Discourse.Scrolling = Em.Mixin.create({
   },
 
   /**
-    Begin watching for scroll events. They will be called at max every 100ms.
+    Stop watching for scroll events.
 
     @method unbindScrolling
   */

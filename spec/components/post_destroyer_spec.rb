@@ -8,10 +8,12 @@ describe PostDestroyer do
   end
 
   let(:moderator) { Fabricate(:moderator) }
+  let(:admin) { Fabricate(:admin) }
   let(:post) { create_post }
 
   describe 'destroy_old_stubs' do
     it 'destroys stubs for deleted by user posts' do
+      SiteSetting.stubs(:delete_removed_posts_after).returns(24)
       Fabricate(:admin)
       topic = post.topic
       reply1 = create_post(topic: topic)
@@ -52,34 +54,68 @@ describe PostDestroyer do
       reply1.deleted_at.should == nil
 
     end
+
+    it 'uses the delete_removed_posts_after site setting' do
+      Fabricate(:admin)
+      topic = post.topic
+      reply1 = create_post(topic: topic)
+      reply2 = create_post(topic: topic)
+
+      PostDestroyer.new(reply1.user, reply1).destroy
+      PostDestroyer.new(reply2.user, reply2).destroy
+
+      SiteSetting.stubs(:delete_removed_posts_after).returns(1)
+
+      reply2.update_column(:updated_at, 70.minutes.ago)
+
+      PostDestroyer.destroy_stubs
+
+      reply1.reload
+      reply2.reload
+
+      reply1.deleted_at.should == nil
+      reply2.deleted_at.should_not == nil
+
+      SiteSetting.stubs(:delete_removed_posts_after).returns(72)
+
+      reply1.update_column(:updated_at, 2.days.ago)
+
+      PostDestroyer.destroy_stubs
+
+      reply1.reload.deleted_at.should == nil
+
+      SiteSetting.stubs(:delete_removed_posts_after).returns(47)
+
+      PostDestroyer.destroy_stubs
+
+      reply1.reload.deleted_at.should_not == nil
+    end
   end
 
   describe 'basic destroying' do
 
-    let(:moderator) { Fabricate(:moderator) }
-    let(:admin) { Fabricate(:admin) }
+    it "as the creator of the post, doesn't delete the post" do
+      SiteSetting.stubs(:unique_posts_mins).returns(5)
+      SiteSetting.stubs(:delete_removed_posts_after).returns(24)
 
-    context "as the creator of the post" do
-      before do
-        @orig = post.cooked
-        PostDestroyer.new(post.user, post).destroy
-        post.reload
-      end
+      post2 = create_post # Create it here instead of with "let" so unique_posts_mins can do its thing
 
-      it "doesn't delete the post" do
-        post.deleted_at.should be_blank
-        post.deleted_by.should be_blank
-        post.user_deleted.should be_true
-        post.raw.should == I18n.t('js.post.deleted_by_author')
-        post.version.should == 2
+      @orig = post2.cooked
+      PostDestroyer.new(post2.user, post2).destroy
+      post2.reload
 
-        # lets try to recover
-        PostDestroyer.new(post.user, post).recover
-        post.reload
-        post.version.should == 3
-        post.user_deleted.should be_false
-        post.cooked.should == @orig
-      end
+      post2.deleted_at.should be_blank
+      post2.deleted_by.should be_blank
+      post2.user_deleted.should be_true
+      post2.raw.should == I18n.t('js.post.deleted_by_author', {count: 24})
+      post2.version.should == 2
+
+      # lets try to recover
+      PostDestroyer.new(post2.user, post2).recover
+      post2.reload
+      post2.version.should == 3
+      post2.user_deleted.should be_false
+      post2.cooked.should == @orig
     end
 
     context "as a moderator" do
@@ -144,6 +180,37 @@ describe PostDestroyer do
 
     end
 
+  end
+
+  context "deleting a post belonging to a deleted topic" do
+    let!(:topic) { post.topic }
+
+    before do
+      topic.trash!(admin)
+      post.reload
+    end
+
+    context "as a moderator" do
+      before do
+        PostDestroyer.new(moderator, post).destroy
+      end
+
+      it "deletes the post" do
+        post.deleted_at.should be_present
+        post.deleted_by.should == moderator
+      end
+    end
+
+    context "as an admin" do
+      before do
+        PostDestroyer.new(admin, post).destroy
+      end
+
+      it "deletes the post" do
+        post.deleted_at.should be_present
+        post.deleted_by.should == admin
+      end
+    end
   end
 
   describe 'after delete' do

@@ -1,33 +1,4 @@
 /**
-  The route for updating a user's username
-
-  @class PreferencesUsernameRoute
-  @extends Discourse.RestrictedUserRoute
-  @namespace Discourse
-  @module Discourse
-**/
-Discourse.PreferencesUsernameRoute = Discourse.RestrictedUserRoute.extend({
-  model: function() {
-    return this.modelFor('user');
-  },
-
-  renderTemplate: function() {
-    return this.render({ into: 'user', outlet: 'userOutlet' });
-  },
-
-  // A bit odd, but if we leave to /preferences we need to re-render that outlet
-  exit: function() {
-    this._super();
-    this.render('preferences', { into: 'user', outlet: 'userOutlet', controller: 'preferences' });
-  },
-
-  setupController: function(controller, user) {
-    controller.setProperties({ model: user, newUsername: user.get('username') });
-  }
-});
-
-
-/**
   This controller supports actions related to updating one's username
 
   @class PreferencesUsernameController
@@ -55,7 +26,7 @@ Discourse.PreferencesUsernameController = Discourse.ObjectController.extend({
       this.set('errorMessage', null);
       if (this.blank('newUsername')) return;
       if (this.get('unchanged')) return;
-      Discourse.User.checkUsername(this.get('newUsername')).then(function(result) {
+      Discourse.User.checkUsername(this.get('newUsername'), undefined, this.get('content.id')).then(function(result) {
         if (result.errors) {
           preferencesUsernameController.set('errorMessage', result.errors.join(' '));
         } else if (result.available === false) {
@@ -70,21 +41,24 @@ Discourse.PreferencesUsernameController = Discourse.ObjectController.extend({
     return I18n.t("user.change");
   }.property('saving'),
 
-  changeUsername: function() {
-    var preferencesUsernameController = this;
-    return bootbox.confirm(I18n.t("user.change_username.confirm"), I18n.t("no_value"), I18n.t("yes_value"), function(result) {
-      if (result) {
-        preferencesUsernameController.set('saving', true);
-        preferencesUsernameController.get('content').changeUsername(preferencesUsernameController.get('newUsername')).then(function() {
-          Discourse.URL.redirectTo("/users/" + preferencesUsernameController.get('newUsername').toLowerCase() + "/preferences");
-        }, function() {
-          // error
-          preferencesUsernameController.set('error', true);
-          preferencesUsernameController.set('saving', false);
-        });
-      }
-    });
+  actions: {
+    changeUsername: function() {
+      var preferencesUsernameController = this;
+      return bootbox.confirm(I18n.t("user.change_username.confirm"), I18n.t("no_value"), I18n.t("yes_value"), function(result) {
+        if (result) {
+          preferencesUsernameController.set('saving', true);
+          preferencesUsernameController.get('content').changeUsername(preferencesUsernameController.get('newUsername')).then(function() {
+            Discourse.URL.redirectTo("/users/" + preferencesUsernameController.get('newUsername').toLowerCase() + "/preferences");
+          }, function() {
+            // error
+            preferencesUsernameController.set('error', true);
+            preferencesUsernameController.set('saving', false);
+          });
+        }
+      });
+    }
   }
+
 });
 
 

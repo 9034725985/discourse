@@ -1,5 +1,7 @@
 <a href="http://www.discourse.org/">![Logo](images/discourse.png)</a>
 
+[![Build Status](https://travis-ci.org/9034725985/discourse.png?branch=bleeding)](https://travis-ci.org/9034725985/discourse)
+
 Discourse is the 100% open source, next-generation discussion platform built for the next decade of the Internet.
 
 Whenever you need ...

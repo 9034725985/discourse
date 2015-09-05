@@ -1,14 +1,14 @@
 require_dependency 'discourse_hub'
 require_dependency 'user_name_suggester'
-require_dependency 'user_activator'
-require_dependency 'avatar_upload_service'
+require_dependency 'rate_limiter'
 
 class UsersController < ApplicationController
 
   skip_before_filter :authorize_mini_profiler, only: [:avatar]
-  skip_before_filter :check_xhr, only: [:show, :password_reset, :update, :activate_account, :authorize_email, :user_preferences_redirect, :avatar]
+  skip_before_filter :check_xhr, only: [:show, :password_reset, :update, :account_created, :activate_account, :perform_account_activation, :authorize_email, :user_preferences_redirect, :avatar, :my_redirect, :toggle_anon, :admin_login]
 
-  before_filter :ensure_logged_in, only: [:username, :update, :change_email, :user_preferences_redirect, :upload_avatar, :toggle_avatar]
+  before_filter :ensure_logged_in, only: [:username, :update, :change_email, :user_preferences_redirect, :upload_user_image, :pick_avatar, :destroy_user_image, :destroy, :check_emails]
+  before_filter :respond_to_suspicious_request, only: [:create]
 
   # we need to allow account creation with bad CSRF tokens, if people are caching, the CSRF token on the
   #  page is going to be empty, this means that server will see an invalid CSRF and blow the session
@@ -17,16 +17,37 @@ class UsersController < ApplicationController
   skip_before_filter :redirect_to_login_if_required, only: [:check_username,
                                                             :create,
                                                             :get_honeypot_value,
+                                                            :account_created,
                                                             :activate_account,
+                                                            :perform_account_activation,
                                                             :send_activation_email,
                                                             :authorize_email,
-                                                            :password_reset]
+                                                            :password_reset,
+                                                            :admin_login]
+
+  def index
+  end
 
   def show
     @user = fetch_user_from_params
     user_serializer = UserSerializer.new(@user, scope: guardian, root: 'user')
+    if params[:stats].to_s == "false"
+      user_serializer.omit_stats = true
+    end
+    topic_id = params[:include_post_count_for].to_i
+    if topic_id != 0
+      user_serializer.topic_post_count = {topic_id => Post.where(topic_id: topic_id, user_id: @user.id).count }
+    end
+
+    # This is a hack to get around a Rails issue where values with periods aren't handled correctly
+    # when used as part of a route.
+    if params[:external_id] and params[:external_id].ends_with? '.json'
+      return render_json_dump(user_serializer)
+    end
+
     respond_to do |format|
       format.html do
+        @restrict_fields = guardian.restrict_user_fields?(@user)
         store_preloaded("user_#{@user.username}", MultiJson.dump(user_serializer))
       end
 
@@ -36,6 +57,23 @@ class UsersController < ApplicationController
     end
   end
 
+  def card_badge
+  end
+
+  def update_card_badge
+    user = fetch_user_from_params
+    guardian.ensure_can_edit!(user)
+
+    user_badge = UserBadge.find_by(id: params[:user_badge_id].to_i)
+    if user_badge && user_badge.user == user && user_badge.badge.image.present?
+      user.user_profile.update_column(:card_image_badge_id, user_badge.badge.id)
+    else
+      user.user_profile.update_column(:card_image_badge_id, nil)
+    end
+
+    render nothing: true
+  end
+
   def user_preferences_redirect
     redirect_to email_preferences_path(current_user.username_lower)
   end
@@ -43,8 +81,24 @@ class UsersController < ApplicationController
   def update
     user = fetch_user_from_params
     guardian.ensure_can_edit!(user)
-    json_result(user, serializer: UserSerializer) do |u|
-      updater = UserUpdater.new(user)
+
+    if params[:user_fields].present?
+      params[:custom_fields] = {} unless params[:custom_fields].present?
+
+      fields = UserField.all
+      fields = fields.where(editable: true) unless current_user.staff?
+      fields.each do |f|
+        val = params[:user_fields][f.id.to_s]
+        val = nil if val === "false"
+        val = val[0...UserField.max_length] if val
+
+        return render_json_error(I18n.t("login.missing_user_field")) if val.blank? && f.required?
+        params[:custom_fields]["user_field_#{f.id}"] = val
+      end
+    end
+
+    json_result(user, serializer: UserSerializer, additional_errors: [:user_profile]) do |u|
+      updater = UserUpdater.new(current_user, user)
       updater.update(params)
     end
   end
@@ -55,8 +109,46 @@ class UsersController < ApplicationController
     user = fetch_user_from_params
     guardian.ensure_can_edit_username!(user)
 
-    result = user.change_username(params[:new_username])
+    # TODO proper error surfacing (result is a Model#save call)
+    result = UsernameChanger.change(user, params[:new_username], current_user)
     raise Discourse::InvalidParameters.new(:new_username) unless result
+
+    render json: {
+      id: user.id,
+      username: user.username
+    }
+  end
+
+  def check_emails
+    user = fetch_user_from_params(include_inactive: true)
+    guardian.ensure_can_check_emails!(user)
+
+    StaffActionLogger.new(current_user).log_check_email(user, context: params[:context])
+
+    render json: {
+      email: user.email,
+      associated_accounts: user.associated_accounts
+    }
+  rescue Discourse::InvalidAccess
+    render json: failed_json, status: 403
+  end
+
+  def badge_title
+    params.require(:user_badge_id)
+
+    user = fetch_user_from_params
+    guardian.ensure_can_edit!(user)
+
+    user_badge = UserBadge.find_by(id: params[:user_badge_id])
+    if user_badge && user_badge.user == user && user_badge.badge.allow_title?
+      user.title = user_badge.badge.name
+      user.user_profile.badge_granted_title = true
+      user.save!
+      user.user_profile.save!
+    else
+      user.title = ''
+      user.save!
+    end
 
     render nothing: true
   end
@@ -65,25 +157,47 @@ class UsersController < ApplicationController
     render nothing: true
   end
 
+  def my_redirect
+    if current_user.present? && params[:path] =~ /^[a-z\-\/]+$/
+      redirect_to path("/users/#{current_user.username}/#{params[:path]}")
+      return
+    end
+    raise Discourse::NotFound
+  end
+
   def invited
     inviter = fetch_user_from_params
+    offset = params[:offset].to_i || 0
+    filter_by = params[:filter]
 
-    invites = if guardian.can_see_pending_invites_from?(inviter)
-      Invite.find_all_invites_from(inviter)
+    invites = if guardian.can_see_invite_details?(inviter) && filter_by == "pending"
+      Invite.find_pending_invites_from(inviter, offset)
     else
-      Invite.find_redeemed_invites_from(inviter)
+      Invite.find_redeemed_invites_from(inviter, offset)
     end
 
-    invites = invites.filter_by(params[:filter])
+    invites = invites.filter_by(params[:search])
+    render_json_dump invites: serialize_data(invites.to_a, InviteSerializer),
+                     can_see_invite_details: guardian.can_see_invite_details?(inviter)
+  end
 
-    render_serialized(invites.to_a, InviteSerializer)
+  def invited_count
+    inviter = fetch_user_from_params
+
+    pending_count = Invite.find_pending_invites_count(inviter)
+    redeemed_count = Invite.find_redeemed_invites_count(inviter)
+
+    render json: {counts: { pending: pending_count, redeemed: redeemed_count,
+                            total: (pending_count.to_i + redeemed_count.to_i) } }
   end
 
   def is_local_username
-    params.require(:username)
-    u = params[:username].downcase
-    r = User.exec_sql('select 1 from users where username_lower = ?', u).values
-    render json: {valid: r.length == 1}
+    users = params[:usernames]
+    users = [params[:username]] if users.blank?
+    users.each(&:downcase!)
+
+    result = User.where(username_lower: users).pluck(:username_lower)
+    render json: {valid: result}
   end
 
   def render_available_true
@@ -97,7 +211,10 @@ class UsersController < ApplicationController
   # Used for checking availability of a username and will return suggestions
   # if the username is not available.
   def check_username
-    params.require(:username)
+    if !params[:username].present?
+      params.require(:username) if !params[:email].present?
+      return render(json: success_json)
+    end
     username = params[:username]
 
     target_user = user_from_params_or_current_user
@@ -107,9 +224,7 @@ class UsersController < ApplicationController
 
     checker = UsernameCheckerService.new
     email = params[:email] || target_user.try(:email)
-    render(json: checker.check_username(username, email))
-  rescue RestClient::Forbidden
-    render json: {errors: [I18n.t("discourse_hub.access_token_problem")]}
+    render json: checker.check_username(username, email)
   end
 
   def user_from_params_or_current_user
@@ -117,19 +232,88 @@ class UsersController < ApplicationController
   end
 
   def create
-    return fake_success_response if suspicious? params
+    params.permit(:user_fields)
 
-    user = User.new_from_params(params)
-    user.ip_address = request.ip
-    auth = authenticate_user(user, params)
-    register_nickname(user)
+    unless SiteSetting.allow_new_registrations
+      return fail_with("login.new_registrations_disabled")
+    end
 
-    user.save ? user_create_successful(user, auth) : user_create_failed(user)
+    if params[:password] && params[:password].length > User.max_password_length
+      return fail_with("login.password_too_long")
+    end
 
+    if params[:email] && params[:email].length > 254 + 1 + 253
+      return fail_with("login.email_too_long")
+    end
+
+    if SiteSetting.reserved_usernames.split("|").include? params[:username].downcase
+      return fail_with("login.reserved_username")
+    end
+
+    user = User.new(user_params)
+
+    # Handle custom fields
+    user_fields = UserField.all
+    if user_fields.present?
+      field_params = params[:user_fields] || {}
+      fields = user.custom_fields
+
+      user_fields.each do |f|
+        field_val = field_params[f.id.to_s]
+        if field_val.blank?
+          return fail_with("login.missing_user_field") if f.required?
+        else
+          fields["user_field_#{f.id}"] = field_val[0...UserField.max_length]
+        end
+      end
+
+      user.custom_fields = fields
+    end
+
+    authentication = UserAuthenticator.new(user, session)
+
+    if !authentication.has_authenticator? && !SiteSetting.enable_local_logins
+      return render nothing: true, status: 500
+    end
+
+    authentication.start
+
+    activation = UserActivator.new(user, request, session, cookies)
+    activation.start
+
+    # just assign a password if we have an authenticator and no password
+    # this is the case for Twitter
+    user.password = SecureRandom.hex if user.password.blank? && authentication.has_authenticator?
+
+    if user.save
+      authentication.finish
+      activation.finish
+
+      # save user email in session, to show on account-created page
+      session["user_created_message"] = activation.message
+
+      render json: {
+        success: true,
+        active: user.active?,
+        message: activation.message,
+        user_id: user.id
+      }
+    else
+      render json: {
+        success: false,
+        message: I18n.t(
+          'login.errors',
+          errors: user.errors.full_messages.join("\n")
+        ),
+        errors: user.errors.to_hash,
+        values: user.attributes.slice('name', 'username', 'email')
+      }
+    end
   rescue ActiveRecord::StatementInvalid
-    render json: { success: false, message: I18n.t("login.something_already_taken") }
-  rescue DiscourseHub::NicknameUnavailable => e
-    render json: e.response_message
+    render json: {
+      success: false,
+      message: I18n.t("login.something_already_taken")
+    }
   rescue RestClient::Forbidden
     render json: { errors: [I18n.t("discourse_hub.access_token_problem")] }
   end
@@ -139,17 +323,39 @@ class UsersController < ApplicationController
   end
 
   def password_reset
-    expires_now()
+    expires_now
 
-    @user = EmailToken.confirm(params[:token])
-    if @user.blank?
-      flash[:error] = I18n.t('password_reset.no_token')
-    elsif request.put?
-      raise Discourse::InvalidParameters.new(:password) unless params[:password].present?
-      @user.password = params[:password]
-      logon_after_password_reset if @user.save
+    if EmailToken.valid_token_format?(params[:token])
+      @user = EmailToken.confirm(params[:token])
+
+      if @user
+        session["password-#{params[:token]}"] = @user.id
+      else
+        user_id = session["password-#{params[:token]}"]
+        @user = User.find(user_id) if user_id
+      end
+    else
+      @invalid_token = true
     end
-    render layout: 'no_js'
+
+    if !@user
+      @error = I18n.t('password_reset.no_token')
+    elsif request.put?
+      @invalid_password = params[:password].blank? || params[:password].length > User.max_password_length
+
+      if @invalid_password
+        @user.errors.add(:password, :invalid)
+      else
+        @user.password = params[:password]
+        @user.password_required!
+        @user.auth_token = nil
+        if @user.save
+          Invite.invalidate_for_email(@user.email) # invite link can't be used to log in anymore
+          logon_after_password_reset
+        end
+      end
+    end
+    render layout: 'no_ember'
   end
 
   def logon_after_password_reset
@@ -162,8 +368,59 @@ class UsersController < ApplicationController
                 'password_reset.success_unapproved'
               end
 
-    flash[:success] = I18n.t(message)
-   end
+    @success = I18n.t(message)
+  end
+
+  def admin_login
+    if current_user
+      return redirect_to path("/")
+    end
+
+    if request.put?
+      RateLimiter.new(nil, "admin-login-hr-#{request.remote_ip}", 6, 1.hour).performed!
+      RateLimiter.new(nil, "admin-login-min-#{request.remote_ip}", 3, 1.minute).performed!
+
+      user = User.where(email: params[:email], admin: true).where.not(id: Discourse::SYSTEM_USER_ID).first
+      if user
+        email_token = user.email_tokens.create(email: user.email)
+        Jobs.enqueue(:user_email, type: :admin_login, user_id: user.id, email_token: email_token.token)
+        @message = I18n.t("admin_login.success")
+      else
+        @message = I18n.t("admin_login.error")
+      end
+    elsif params[:token].present?
+      # token recieved, try to login
+      if EmailToken.valid_token_format?(params[:token])
+        @user = EmailToken.confirm(params[:token])
+        if @user && @user.admin?
+          # Log in user
+          log_on_user(@user)
+          return redirect_to path("/")
+        else
+          @message = I18n.t("admin_login.error")
+        end
+      else
+        @message = I18n.t("admin_login.error")
+      end
+    end
+
+    render layout: false
+  rescue RateLimiter::LimitExceeded
+    @message = I18n.t("rate_limiter.slow_down")
+    render layout: false
+  end
+
+  def toggle_anon
+    user = AnonymousShadowCreator.get_master(current_user) ||
+           AnonymousShadowCreator.get(current_user)
+
+    if user
+      log_on_user(user)
+      render json: success_json
+    else
+      render json: failed_json, status: 403
+    end
+  end
 
   def change_email
     params.require(:email)
@@ -171,8 +428,11 @@ class UsersController < ApplicationController
     guardian.ensure_can_edit_email!(user)
     lower_email = Email.downcase(params[:email]).strip
 
+    RateLimiter.new(user, "change-email-hr-#{request.remote_ip}", 6, 1.hour).performed!
+    RateLimiter.new(user, "change-email-min-#{request.remote_ip}", 3, 1.minute).performed!
+
     # Raise an error if the email is already in use
-    if User.where("email = ?", lower_email).exists?
+    if User.find_by_email(lower_email)
       raise Discourse::InvalidParameters.new(:email)
     end
 
@@ -186,6 +446,8 @@ class UsersController < ApplicationController
     )
 
     render nothing: true
+  rescue RateLimiter::LimitExceeded
+    render_json_error(I18n.t("rate_limiter.slow_down"))
   end
 
   def authorize_email
@@ -195,11 +457,22 @@ class UsersController < ApplicationController
     else
       flash[:error] = I18n.t('change_email.error')
     end
-    render layout: 'no_js'
+    render layout: 'no_ember'
+  end
+
+  def account_created
+    @message = session['user_created_message'] || I18n.t('activation.missing_session')
+    expires_now
+    render layout: 'no_ember'
   end
 
   def activate_account
-    expires_now()
+    expires_now
+    render layout: 'no_ember'
+  end
+
+  def perform_account_activation
+    raise Discourse::InvalidAccess.new if honeypot_or_challenge_fails?(params)
     if @user = EmailToken.confirm(params[:token])
 
       # Log in the user unless they need to be approved
@@ -211,13 +484,19 @@ class UsersController < ApplicationController
       end
 
     else
-      flash[:error] = I18n.t('activation.already_done')
+      flash.now[:error] = I18n.t('activation.already_done')
     end
-    render layout: 'no_js'
+    render layout: 'no_ember'
   end
 
   def send_activation_email
-    @user = fetch_user_from_params
+    RateLimiter.new(nil, "activate-hr-#{request.remote_ip}", 30, 1.hour).performed!
+    RateLimiter.new(nil, "activate-min-#{request.remote_ip}", 6, 1.minute).performed!
+
+    @user = User.find_by_username_or_email(params[:username].to_s)
+
+    raise Discourse::NotFound unless @user
+
     @email_token = @user.email_tokens.unconfirmed.active.first
     enqueue_activation_email if @user
     render nothing: true
@@ -232,78 +511,86 @@ class UsersController < ApplicationController
     term = params[:term].to_s.strip
     topic_id = params[:topic_id]
     topic_id = topic_id.to_i if topic_id
+    topic_allowed_users = params[:topic_allowed_users] || false
 
-    results = UserSearch.new(term, topic_id).search
+    results = UserSearch.new(term, topic_id: topic_id, topic_allowed_users: topic_allowed_users, searching_user: current_user).search
 
-    user_fields = [:username, :use_uploaded_avatar, :upload_avatar_template, :uploaded_avatar_id]
+    user_fields = [:username, :upload_avatar_template, :uploaded_avatar_id]
     user_fields << :name if SiteSetting.enable_names?
 
-    render json: { users: results.as_json(only: user_fields, methods: :avatar_template) }
-  end
+    to_render = { users: results.as_json(only: user_fields, methods: :avatar_template) }
 
-  # [LEGACY] avatars in quotes/oneboxes might still be pointing to this route
-  # fixing it requires a rebake of all the posts
-  def avatar
-    user = User.where(username_lower: params[:username].downcase).first
-    if user.present?
-      size = determine_avatar_size(params[:size])
-      url = user.avatar_template.gsub("{size}", size.to_s)
-      expires_in 1.day
-      redirect_to url
-    else
-      raise ActiveRecord::RecordNotFound
+    if params[:include_groups] == "true"
+      to_render[:groups] = Group.search_group(term, current_user).map {|m| {:name=>m.name, :usernames=> m.usernames.split(",")} }
     end
+
+    render json: to_render
   end
 
-  def determine_avatar_size(size)
-    size = size.to_i
-    size = 64 if size == 0
-    size = 10 if size < 10
-    size = 128 if size > 128
-    size
-  end
-
-  def upload_avatar
+  def pick_avatar
     user = fetch_user_from_params
     guardian.ensure_can_edit!(user)
 
-    file = params[:file] || params[:files].first
+    upload_id = params[:upload_id]
 
-    # Only allow url uploading for API users
-    # TODO: Does not protect from huge uploads
-    # https://github.com/discourse/discourse/pull/1512
-    # check the file size (note: this might also be done in the web server)
-    avatar        = build_avatar_from(file)
-    avatar_policy = AvatarUploadPolicy.new(avatar)
+    user.uploaded_avatar_id = upload_id
 
-    if avatar_policy.too_big?
-      return render status: 413, text: I18n.t("upload.images.too_large",
-                                              max_size_kb: avatar_policy.max_size_kb)
+    # ensure we associate the custom avatar properly
+    if upload_id && user.user_avatar.custom_upload_id != upload_id
+      user.user_avatar.custom_upload_id = upload_id
     end
 
-    raise FastImage::UnknownImageType unless SiteSetting.authorized_image?(avatar.file)
-
-    upload_avatar_for(user, avatar)
-
-  rescue Discourse::InvalidParameters
-    render status: 422, text: I18n.t("upload.images.unknown_image_type")
-  rescue FastImage::ImageFetchFailure
-    render status: 422, text: I18n.t("upload.images.fetch_failure")
-  rescue FastImage::UnknownImageType
-    render status: 422, text: I18n.t("upload.images.unknown_image_type")
-  rescue FastImage::SizeNotFound
-    render status: 422, text: I18n.t("upload.images.size_not_found")
-  end
-
-  def toggle_avatar
-    params.require(:use_uploaded_avatar)
-    user = fetch_user_from_params
-    guardian.ensure_can_edit!(user)
-
-    user.use_uploaded_avatar = params[:use_uploaded_avatar]
     user.save!
+    user.user_avatar.save!
 
-    render nothing: true
+    render json: success_json
+  end
+
+  def destroy_user_image
+    user = fetch_user_from_params
+    guardian.ensure_can_edit!(user)
+
+    case params.require(:type)
+    when "profile_background"
+      user.user_profile.clear_profile_background
+    when "card_background"
+      user.user_profile.clear_card_background
+    else
+      raise Discourse::InvalidParameters.new(:type)
+    end
+
+    render json: success_json
+  end
+
+  def destroy
+    @user = fetch_user_from_params
+    guardian.ensure_can_delete_user!(@user)
+
+    UserDestroyer.new(current_user).destroy(@user, { delete_posts: true, context: params[:context] })
+
+    render json: success_json
+  end
+
+  def read_faq
+    if user = current_user
+      user.user_stat.read_faq = 1.second.ago
+      user.user_stat.save
+    end
+
+    render json: success_json
+  end
+
+  def staff_info
+    @user = fetch_user_from_params
+    guardian.ensure_can_see_staff_info!(@user)
+
+    result = {}
+
+    %W{number_of_deleted_posts number_of_flagged_posts number_of_flags_given number_of_suspensions number_of_warnings}.each do |info|
+      result[info] = @user.send(info)
+    end
+
+    render json: result
   end
 
   private
@@ -322,82 +609,34 @@ class UsersController < ApplicationController
       challenge
     end
 
-    def suspicious?(params)
-      honeypot_or_challenge_fails?(params) || SiteSetting.invite_only?
-    end
-
-    def fake_success_response
-      render(
-        json: {
+    def respond_to_suspicious_request
+      if suspicious?(params)
+        render json: {
           success: true,
           active: false,
           message: I18n.t("login.activate_email", email: params[:email])
         }
-      )
+      end
+    end
+
+    def suspicious?(params)
+      return false if current_user && is_api? && current_user.admin?
+      honeypot_or_challenge_fails?(params) || SiteSetting.invite_only?
     end
 
     def honeypot_or_challenge_fails?(params)
+      return false if is_api?
       params[:password_confirmation] != honeypot_value ||
       params[:challenge] != challenge_value.try(:reverse)
     end
 
-    def valid_session_authentication?(auth, email)
-      auth && auth[:email] == email && auth[:email_valid]
+    def user_params
+      params.permit(:name, :email, :password, :username, :active)
+            .merge(ip_address: request.remote_ip, registration_ip_address: request.remote_ip)
     end
 
-    def create_third_party_auth_records(user, auth)
-      return unless auth && auth[:authenticator_name]
-
-      authenticator = Users::OmniauthCallbacksController.find_authenticator(auth[:authenticator_name])
-      authenticator.after_create_account(user, auth)
-    end
-
-    def register_nickname(user)
-      if user.valid? && SiteSetting.call_discourse_hub?
-        DiscourseHub.register_nickname(user.username, user.email)
-      end
-    end
-
-    def user_create_successful(user, auth)
-      activator = UserActivator.new(user, request, session, cookies)
-      create_third_party_auth_records(user, auth)
-
-      # Clear authentication session.
-      session[:authentication] = nil
-      render json: { success: true, active: user.active?, message: activator.activation_message }
-    end
-
-    def user_create_failed(user)
-      render json: {
-        success: false,
-        message: I18n.t("login.errors", errors: user.errors.full_messages.join("\n")),
-        errors: user.errors.to_hash,
-        values: user.attributes.slice("name", "username", "email")
-      }
-    end
-
-    def authenticate_user(user, params)
-      auth = session[:authentication]
-      user.active = true if valid_session_authentication?(auth, params[:email])
-      user.password_required! unless auth
-      auth
-    end
-
-    def build_avatar_from(file)
-      source = if file.is_a?(String)
-                 is_api? ? :url : (raise FastImage::UnknownImageType)
-               else
-                 :image
-               end
-      AvatarUploadService.new(file, source)
-    end
-
-    def upload_avatar_for(user, avatar)
-      upload = Upload.create_for(user.id, avatar.file, avatar.filesize)
-      user.upload_avatar(upload)
-
-      Jobs.enqueue(:generate_avatars, user_id: user.id, upload_id: upload.id)
-      render json: { url: upload.url, width: upload.width, height: upload.height }
+    def fail_with(key)
+      render json: { success: false, message: I18n.t(key) }
     end
 
 end

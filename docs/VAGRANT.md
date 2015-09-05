@@ -11,7 +11,7 @@ on Discourse with:
 
 1. Install Git: http://git-scm.com/downloads (or [GitHub for Windows](http://windows.github.com/) if you want a GUI)
 2. Install VirtualBox: https://www.virtualbox.org/wiki/Downloads
-3. Install Vagrant: http://www.vagrantup.com/ (We require Vagrant 1.1.2+ or later)
+3. Install Vagrant: http://www.vagrantup.com/ (We require Vagrant 1.7.2 or later)
 4. Open a terminal
 5. Clone the project: `git clone https://github.com/discourse/discourse.git`
 6. Enter the project directory: `cd discourse`
@@ -71,7 +71,7 @@ You may use this client to connect to the VM by using ```vagrant/vagrant``` as y
 PuTTYGen to import the insecure_private_key file](http://jason.sharonandjason.com/key_based_putty_logins_mini_how_to.htm)
 (mentioned above) into a PuTTY profile to quickly access your VM.
 
-### Keeping your VM up to date
+### Keeping your VM up to date (and first install)
 
 Now you're in a virtual machine is almost ready to start developing. It's a good idea to perform the following instructions
 *every time* you pull from master to ensure your environment is still up to date.
@@ -92,24 +92,11 @@ bundle exec rails s
 
 In a few seconds, rails will start serving pages. To access them, open a web browser to [http://localhost:4000](http://localhost:4000) - if it all worked you should see discourse! Congratulations, you are ready to start working!
 
+If you want to log in as a user, a shortcut you can use in development mode is to follow this link to log in as `eviltrout`:
+
+http://localhost:4000/session/eviltrout/become
+
 You can now edit files on your local file system, using your favorite text editor or IDE. When you reload your web browser, it should have the latest changes.
-
-### Changing the Seed Data
-
-By default, the Vagrant virtual machine comes seeded with test data. You'll have a few topics to play around with
-and some user accounts. If you'd like to use the default production seed data instead you can execute the following
-commands:
-
-```
-vagrant ssh
-cd /vagrant
-rake db:drop db:create
-psql discourse_development < pg_dumps/production-image.sql
-rake db:migrate
-rake db:test:prepare
-```
-
-If you change your mind and want to use the test data again, just execute the above but using `pg_dumps/development-image.sql` instead.
 
 ### Tests
 
@@ -120,8 +107,8 @@ To use it, follow all the above steps. Once rails is running, open a new termina
 ```
 vagrant ssh
 cd /vagrant
-bundle exec rake db:test:prepare
-bundle exec rake autospec
+RAILS_ENV=test bundle exec rake db:migrate
+bundle exec rake autospec p l=5
 ```
 
 For more insight into testing Discourse, see [this discussion](http://rubyrogues.com/117-rr-discourse-part-2-with-sam-saffron-and-robin-ward/) with the Ruby Rogues.
@@ -139,17 +126,10 @@ Mailcatcher is used to avoid the whole issue of actually sending emails: https:/
 Mailcatcher is already installed in the vm, and there's an alias to launch it:
 
 ```
-mc
+mailcatcher --http-ip=0.0.0.0
 ```
 
 Then in a browser, go to [http://localhost:4080](http://localhost:4080). Sent emails will be received by mailcatcher and shown in its web ui.
-
-If for some reason mailcatcher is not installed, install and launch it with these commands:
-
-```
-gem install mailcatcher
-mailcatcher --http-ip 0.0.0.0
-```
 
 ### Shutting down the VM
 
@@ -158,4 +138,3 @@ When you're done working on Discourse, you can shut down Vagrant with:
 ```
 vagrant halt
 ```
-

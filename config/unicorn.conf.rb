@@ -1,7 +1,7 @@
 # See http://unicorn.bogomips.org/Unicorn/Configurator.html
 
-# RUN out of band GC every 2 requests
-# ENV['UNICORN_OOBGC_REQS'] = "2" unless ENV['UNICORN_OOBGC_REQS']
+# enable out of band gc out of the box, it is low risk and improves perf a lot
+ENV['UNICORN_ENABLE_OOBGC'] ||= "1"
 
 discourse_path = File.expand_path(File.expand_path(File.dirname(__FILE__)) + "/../")
 
@@ -11,7 +11,7 @@ worker_processes (ENV["UNICORN_WORKERS"] || 3).to_i
 working_directory discourse_path
 
 # listen "#{discourse_path}/tmp/sockets/unicorn.sock"
-listen 3000
+listen (ENV["UNICORN_PORT"] || 3000).to_i
 
 # nuke workers after 30 seconds instead of 60 seconds (the default)
 timeout 30
@@ -48,6 +48,9 @@ before_fork do |server, worker|
       table.classify.constantize.first rescue nil
     end
 
+    # router warm up
+    Rails.application.routes.recognize_path('abc') rescue nil
+
     # get rid of rubbish so we don't share it
     GC.start
 
@@ -66,6 +69,87 @@ before_fork do |server, worker|
       end
     end
 
+    sidekiqs = ENV['UNICORN_SIDEKIQS'].to_i
+    if sidekiqs > 0
+      puts "Starting up #{sidekiqs} supervised sidekiqs"
+
+      require 'demon/sidekiq'
+
+      Demon::Sidekiq.start(sidekiqs)
+
+      class ::Unicorn::HttpServer
+        alias :master_sleep_orig :master_sleep
+
+        def max_rss
+          rss = `ps -eo rss,args | grep sidekiq | grep -v grep | awk '{print $1}'`
+                .split("\n")
+                .map(&:to_i)
+                .max
+
+          rss ||= 0
+
+          rss * 1024
+        end
+
+        def max_allowed_size
+          [ENV['UNICORN_SIDEKIQ_MAX_RSS'].to_i, 500].max.megabytes
+        end
+
+        def out_of_memory?
+          max_rss > max_allowed_size
+        end
+
+        def force_kill_rogue_sidekiq
+          info = `ps -eo pid,rss,args | grep sidekiq | grep -v grep | awk '{print $1,$2}'`
+          info.split("\n").each do |row|
+            pid,mem = row.split(" ").map(&:to_i)
+            if pid > 0 && (mem*1024) > max_allowed_size
+              Rails.logger.warn "Detected rogue Sidekiq pid #{pid} mem #{mem*1024}, killing"
+              Process.kill("KILL", pid) rescue nil
+            end
+          end
+        end
+
+        def check_sidekiq_heartbeat
+          @sidekiq_heartbeat_interval ||= 30.minutes
+          @sidekiq_next_heartbeat_check ||= Time.new.to_i + @sidekiq_heartbeat_interval
+
+          if @sidekiq_next_heartbeat_check < Time.new.to_i
+
+            last_heartbeat = Jobs::RunHeartbeat.last_heartbeat
+            restart = false
+
+            if out_of_memory?
+              Rails.logger.warn("Sidekiq is consuming too much memory (using: %0.2fM) for '%s', restarting" % [(max_rss.to_f / 1.megabyte), ENV["DISCOURSE_HOSTNAME"]])
+              restart = true
+            end
+
+            if last_heartbeat < Time.new.to_i - @sidekiq_heartbeat_interval
+              STDERR.puts "Sidekiq heartbeat test failed, restarting"
+              Rails.logger.warn "Sidekiq heartbeat test failed, restarting"
+
+              restart = true
+            end
+            @sidekiq_next_heartbeat_check = Time.new.to_i + @sidekiq_heartbeat_interval
+
+            if restart
+              Demon::Sidekiq.restart
+              sleep 10
+              force_kill_rogue_sidekiq
+            end
+            $redis.client.disconnect
+          end
+        end
+
+        def master_sleep(sec)
+          Demon::Sidekiq.ensure_running
+          check_sidekiq_heartbeat
+
+          master_sleep_orig(sec)
+        end
+      end
+    end
+
   end
 
   ActiveRecord::Base.connection.disconnect!
@@ -80,8 +164,5 @@ before_fork do |server, worker|
 end
 
 after_fork do |server, worker|
-  ActiveRecord::Base.establish_connection
-  $redis.client.reconnect
-  Rails.cache.reconnect
-  MessageBus.after_fork
+  Discourse.after_fork
 end

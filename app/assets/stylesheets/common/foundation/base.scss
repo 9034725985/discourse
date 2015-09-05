@@ -6,31 +6,30 @@
 // --------------------------------------------------
 
 html {
-  color: $black;
-  font: #{$base-font-size}/#{$base-line-height} $base-font-family;
-  background-color: #fff;
+  color: $primary;
+  font-family: $base-font-family;
+  font-size: $base-font-size;
+  line-height: $base-line-height;
+  background-color: $secondary;
   overflow-y: scroll;
-  -webkit-font-smoothing: subpixel-antialiased;
+  direction: ltr;
 }
 
 // Links
 // --------------------------------------------------
 
 a {
-  color: $link-color;
+  color: $tertiary;
   text-decoration: none;
   cursor: pointer;
   &:visited {
-    color: $link-color-visited;
+    color: $tertiary;
   }
   &:hover {
-    color: $link-color-hover;
-  }
-  &:focus {
-    outline: 0;
+    color: $tertiary;
   }
   &:active {
-    color: $link-color-active;
+    color: $tertiary;
   }
 }
 
@@ -42,7 +41,7 @@ hr {
   height: 1px;
   margin: 1em 0;
   border: 0;
-  border-top: 1px solid #eee;
+  border-top: 1px solid dark-light-diff($primary, $secondary, 90%, -60%);
   padding: 0;
 }
 
@@ -54,6 +53,11 @@ ol,
 dd {
   margin: 0 0 9px 25px;
   padding: 0;
+}
+
+
+.cooked ul, .cooked ol, .cooked dd {
+  clear: both;
 }
 
 li {
@@ -81,4 +85,16 @@ fieldset {
 
 pre code {
   overflow: auto;
+}
+
+// TODO figure out a clean place to put stuff like this
+.row:before, .row:after {
+  display: table;
+  content: "";
+}
+.row:after {clear: both;}
+
+
+#offscreen-content {
+  display: none;
 }

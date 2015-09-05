@@ -1,3 +1,5 @@
+require 'scheduler/scheduler'
+
 module Jobs
 
   def self.queued
@@ -12,7 +14,7 @@ module Jobs
   end
 
   def self.num_email_retry_jobs
-    Sidekiq::RetrySet.new.select { |job| job.klass =~ /Email$/ }.size
+    Sidekiq::RetrySet.new.count { |job| job.klass =~ /Email$/ }
   end
 
   class Base
@@ -46,11 +48,27 @@ module Jobs
     end
 
     def log(*args)
-      puts args
       args.each do |arg|
         Rails.logger.info "#{Time.now.to_formatted_s(:db)}: [#{self.class.name.upcase}] #{arg}"
       end
       true
+    end
+
+    # Construct an error context object for Discourse.handle_exception
+    # Subclasses are encouraged to use this!
+    #
+    # `opts` is the arguments passed to execute().
+    # `code_desc` is a short string describing what the code was doing (optional).
+    # `extra` is for any other context you logged.
+    # Note that, when building your `extra`, that :opts, :job, and :code are used by this method,
+    # and :current_db and :current_hostname are used by handle_exception.
+    def error_context(opts, code_desc = nil, extra = {})
+      ctx = {}
+      ctx[:opts] = opts
+      ctx[:job] = self.class
+      ctx[:message] = code_desc if code_desc
+      ctx.merge!(extra) if extra != nil
+      ctx
     end
 
     def self.delayed_perform(opts={})
@@ -73,6 +91,7 @@ module Jobs
     end
 
     def perform(*args)
+      total_db_time = 0
       ensure_db_instrumented
       opts = args.extract_options!.with_indifferent_access
 
@@ -86,7 +105,12 @@ module Jobs
         if opts.has_key?(:current_site_id) && opts[:current_site_id] != RailsMultisite::ConnectionManagement.current_db
           raise ArgumentError.new("You can't connect to another database when executing a job synchronously.")
         else
-          return execute(opts)
+          begin
+            retval = execute(opts)
+          rescue => exc
+            Discourse.handle_job_exception(exc, error_context(opts))
+          end
+          return retval
         end
       end
 
@@ -98,10 +122,10 @@ module Jobs
           RailsMultisite::ConnectionManagement.all_dbs
         end
 
-      total_db_time = 0
+      exceptions = []
       dbs.each do |db|
         begin
-          thread_exception = nil
+          thread_exception = {}
           # NOTE: This looks odd, in fact it looks crazy but there is a reason
           #  A bug in therubyracer means that under certain conditions running in a fiber
           #  can cause the whole v8 context to corrupt so much that it will hang sidekiq
@@ -125,9 +149,16 @@ module Jobs
             begin
               RailsMultisite::ConnectionManagement.establish_connection(db: db)
               I18n.locale = SiteSetting.default_locale
-              execute(opts)
+              begin
+                execute(opts)
+              rescue => e
+                thread_exception[:ex] = e
+                thread_exception[:other] = { problem_db: db }
+              end
             rescue => e
-              thread_exception = e
+              thread_exception[:ex] = e
+              thread_exception[:message] = "While establishing database connection to #{db}"
+              thread_exception[:other] = { problem_db: db }
             ensure
               ActiveRecord::Base.connection_handler.clear_active_connections!
               total_db_time += Instrumenter.stats.duration_ms
@@ -135,10 +166,19 @@ module Jobs
           end
           t.join
 
-          raise thread_exception if thread_exception
+          exceptions << thread_exception unless thread_exception.empty?
         end
       end
 
+      if exceptions.length > 0
+        exceptions.each do |exception_hash|
+          Discourse.handle_job_exception(exception_hash[:ex],
+                error_context(opts, exception_hash[:code], exception_hash[:other]))
+        end
+        raise HandledExceptionWrapper.new exceptions[0][:ex]
+      end
+
+      nil
     ensure
       ActiveRecord::Base.connection_handler.clear_active_connections!
       @db_duration = total_db_time
@@ -146,8 +186,16 @@ module Jobs
 
   end
 
+  class HandledExceptionWrapper < StandardError
+    attr_accessor :wrapped
+    def initialize(ex)
+      super("Wrapped #{ex.class}: #{ex.message}")
+      @wrapped = ex
+    end
+  end
+
   class Scheduled < Base
-    include Sidetiq::Schedulable
+    extend Scheduler::Schedule
   end
 
   def self.enqueue(job_name, opts={})
@@ -179,7 +227,8 @@ module Jobs
   end
 
   def self.enqueue_at(datetime, job_name, opts={})
-    enqueue_in( [(datetime - Time.zone.now).to_i, 0].max, job_name, opts )
+    secs = [(datetime - Time.zone.now).to_i, 0].max
+    enqueue_in(secs, job_name, opts)
   end
 
   def self.cancel_scheduled_job(job_name, params={})

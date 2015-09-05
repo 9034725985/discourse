@@ -14,12 +14,26 @@ class ListableTopicSerializer < BasicTopicSerializer
              :unread,
              :new_posts,
              :pinned,
+             :unpinned,
              :excerpt,
              :visible,
              :closed,
-             :archived
+             :archived,
+             :is_warning,
+             :notification_level,
+             :bookmarked,
+             :liked
 
   has_one :last_poster, serializer: BasicUserSerializer, embed: :objects
+
+  def liked
+    object.user_data && object.user_data.liked
+  end
+
+  def bookmarked
+    object.user_data && object.user_data.bookmarked
+  end
+
   def include_last_poster?
     object.include_last_poster
   end
@@ -29,43 +43,66 @@ class ListableTopicSerializer < BasicTopicSerializer
   end
 
   def seen
-    object.user_data.present?
+    return true if !scope || !scope.user
+    return true if object.user_data && !object.user_data.last_read_post_number.nil?
+    return true if object.created_at < scope.user.treat_as_new_topic_start_date
+    false
+  end
+
+  def is_warning
+    object.subtype == TopicSubtype.moderator_warning
+  end
+
+  def include_is_warning?
+    is_warning
   end
 
   def unseen
-    return false if scope.blank?
-    return false if scope.user.blank?
-    return false if object.user_data.present?
-    return false if object.created_at < scope.user.treat_as_new_topic_start_date
-    true
+    !seen
+  end
+
+  def notification_level
+    object.user_data.notification_level
+  end
+  def include_notification_level?
+    object.user_data.present?
   end
 
   def last_read_post_number
+    return nil unless object.user_data
     object.user_data.last_read_post_number
   end
-  alias :include_last_read_post_number? :seen
+
+  def has_user_data
+    !!object.user_data
+  end
+
+  def excerpt
+    object.excerpt
+  end
+
+  alias :include_last_read_post_number? :has_user_data
 
   def unread
     unread_helper.unread_posts
   end
-  alias :include_unread? :seen
+  alias :include_unread? :has_user_data
 
   def new_posts
     unread_helper.new_posts
   end
-  alias :include_new_posts? :seen
+  alias :include_new_posts? :has_user_data
 
   def include_excerpt?
     pinned
   end
 
-  def excerpt
-    # excerpt should be hoisted into topic, this is an N+1 query ... yuck
-    object.posts.by_post_number.first.try(:excerpt, 220, strip_links: true) || nil
+  def pinned
+    PinnedCheck.pinned?(object, object.user_data)
   end
 
-  def pinned
-    PinnedCheck.new(object, object.user_data).pinned?
+  def unpinned
+    PinnedCheck.unpinned?(object, object.user_data)
   end
 
   protected

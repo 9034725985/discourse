@@ -7,6 +7,9 @@ require_dependency 'email/styles'
 module Email
 
   def self.is_valid?(email)
+
+    return false unless String === email
+
     parser = Mail::RFC2822Parser.new
     parser.root = :addr_spec
     result = parser.parse(email)
@@ -18,7 +21,12 @@ module Email
 
   def self.downcase(email)
     return email unless Email.is_valid?(email)
-    email.gsub(/^(.+@{1})([^@]+)$/) { $1 + $2.downcase }
+    email.downcase
+  end
+
+  def self.cleanup_alias(name)
+    # TODO: I'm sure there are more, but I can't find a list
+    name ? name.gsub(/[:<>,]/, '') : name
   end
 
 end

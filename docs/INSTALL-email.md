@@ -1,13 +1,11 @@
+> # Warning: This Guide is Deprecated
+> We only support Docker based installs now. Please see [our **official install guide**](https://github.com/discourse/discourse/blob/master/docs/INSTALL.md) for supported install instructions.
+
 # Discourse Mail Setup Guide
 
-After following INSTALL-ubuntu.md your mailer settings should still be set (in
-`config/environments/production.rb`, remember) to:
+After following INSTALL-ubuntu.md your mailer settings should still be set.
 
-```ruby
-  config.action_mailer.delivery_method = :sendmail
-  config.action_mailer.sendmail_settings = {arguments: '-i'}
-```
-
+Out-of-the-box Discourse is configured to deliver mail locally via sendmail.
 That's great. Leave that there as we're going to try to get the mail to postfix
 ASAP so postfix do it's job and process the mail for delivery.
 
@@ -128,7 +126,7 @@ Login to Discourse, go to the Admin page and select 'Settings'.
 
 Filter with the string 'system'.
 
-* Ensure that `site_contact_username` is set to an email address for an appropriate "owner" of the forum
+* Ensure that `site_contact_username` is set to an email address for an appropriate "owner" of the site
 * Set `notification_email` to 'noreply@', 'nobody@' as appropriate.
 
 Filter with the string 'contact_email'

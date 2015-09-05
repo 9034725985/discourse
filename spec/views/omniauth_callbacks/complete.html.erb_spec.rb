@@ -13,13 +13,13 @@ describe "users/omniauth_callbacks/complete.html.erb" do
     result = Auth::Result.new
     result.user = User.new
 
-    assign(:data, result)
+    assign(:auth_result, result)
 
     render
 
-    rendered_data["authenticated"].should eq(false)
-    rendered_data["awaiting_activation"].should eq(false)
-    rendered_data["awaiting_approval"].should eq(false)
+    expect(rendered_data["authenticated"]).to eq(false)
+    expect(rendered_data["awaiting_activation"]).to eq(false)
+    expect(rendered_data["awaiting_approval"]).to eq(false)
   end
 
   it "renders cas data " do
@@ -28,14 +28,14 @@ describe "users/omniauth_callbacks/complete.html.erb" do
     result.email = "xxx@xxx.com"
     result.authenticator_name = "CAS"
 
-    assign(:data, result)
+    assign(:auth_result, result)
 
     render
 
-    rendered_data["email"].should eq(result.email)
+    expect(rendered_data["email"]).to eq(result.email)
     # TODO this is a bit weird, the upcasing is confusing,
     #  clean it up throughout
-    rendered_data["auth_provider"].should eq("Cas")
+    expect(rendered_data["auth_provider"]).to eq("Cas")
   end
 
 end

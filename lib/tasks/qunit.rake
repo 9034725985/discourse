@@ -25,6 +25,7 @@ task "qunit:test" => :environment do
   end
 
   unless pid = fork
+    Discourse.after_fork
     Rack::Server.start(:config => "config.ru",
                        :AccessLog => [],
                        :Port => port)
@@ -34,7 +35,7 @@ task "qunit:test" => :environment do
   begin
     success = true
     test_path = "#{Rails.root}/vendor/assets/javascripts"
-    cmd = "phantomjs #{test_path}/run-qunit.js \"http://localhost:#{port}/qunit\""
+    cmd = "phantomjs #{test_path}/run-qunit.js http://localhost:#{port}/qunit"
 
     # wait for server to respond, will exception out on failure
     tries = 0
@@ -48,7 +49,7 @@ task "qunit:test" => :environment do
 
     # A bit of a hack until we can figure this out on Travis
     tries = 0
-    while tries < 3 && $?.exitstatus === 124 && !quit
+    while tries < 3 && $?.exitstatus == 124 && !quit
       tries += 1
       puts "\nTimed Out. Trying again...\n"
       rake_system(cmd)

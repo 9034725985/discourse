@@ -9,7 +9,13 @@ class TopicTrackingState
 
   CHANNEL = "/user-tracking"
 
-  attr_accessor :user_id, :topic_id, :highest_post_number, :last_read_post_number, :created_at, :category_name
+  attr_accessor :user_id,
+                :topic_id,
+                :highest_post_number,
+                :last_read_post_number,
+                :created_at,
+                :category_id,
+                :notification_level
 
   def self.publish_new(topic)
 
@@ -20,7 +26,8 @@ class TopicTrackingState
         last_read_post_number: nil,
         highest_post_number: 1,
         created_at: topic.created_at,
-        topic_id: topic.id
+        topic_id: topic.id,
+        category_id: topic.category_id
       }
     }
 
@@ -28,6 +35,23 @@ class TopicTrackingState
 
     MessageBus.publish("/new", message.as_json, group_ids: group_ids)
     publish_read(topic.id, 1, topic.user_id)
+  end
+
+  def self.publish_latest(topic)
+    return unless topic.archetype == "regular"
+
+    message = {
+      topic_id: topic.id,
+      message_type: "latest",
+      payload: {
+        bumped_at: topic.bumped_at,
+        topic_id: topic.id,
+        category_id: topic.category_id
+      }
+    }
+
+    group_ids = topic.category && topic.category.secure_group_ids
+    MessageBus.publish("/latest", message.as_json, group_ids: group_ids)
   end
 
   def self.publish_unread(post)
@@ -38,7 +62,7 @@ class TopicTrackingState
 
     TopicUser
         .tracking(post.topic_id)
-        .select([:user_id,:last_read_post_number])
+        .select([:user_id,:last_read_post_number, :notification_level])
         .each do |tu|
 
       message = {
@@ -48,46 +72,49 @@ class TopicTrackingState
           last_read_post_number: tu.last_read_post_number,
           highest_post_number: post.post_number,
           created_at: post.created_at,
-          topic_id: post.topic_id
+          topic_id: post.topic_id,
+          notification_level: tu.notification_level
         }
       }
 
       MessageBus.publish("/unread/#{tu.user_id}", message.as_json, group_ids: group_ids)
-
     end
+
   end
 
-  def self.publish_read(topic_id, last_read_post_number, user_id)
+  def self.publish_read(topic_id, last_read_post_number, user_id, notification_level=nil)
 
-      highest_post_number = Topic.where(id: topic_id).pluck(:highest_post_number).first
+    highest_post_number = Topic.where(id: topic_id).pluck(:highest_post_number).first
 
-      message = {
+    message = {
+      topic_id: topic_id,
+      message_type: "read",
+      payload: {
+        last_read_post_number: last_read_post_number,
+        highest_post_number: highest_post_number,
         topic_id: topic_id,
-        message_type: "read",
-        payload: {
-          last_read_post_number: last_read_post_number,
-          highest_post_number: highest_post_number,
-          topic_id: topic_id
-        }
+        notification_level: notification_level
       }
+    }
 
-      MessageBus.publish("/unread/#{user_id}", message.as_json, user_ids: [user_id])
+    MessageBus.publish("/unread/#{user_id}", message.as_json, user_ids: [user_id])
+
   end
 
   def self.treat_as_new_topic_clause
-    User.where("CASE
+    User.where("GREATEST(CASE
                   WHEN COALESCE(u.new_topic_duration_minutes, :default_duration) = :always THEN u.created_at
                   WHEN COALESCE(u.new_topic_duration_minutes, :default_duration) = :last_visit THEN COALESCE(u.previous_visit_at,u.created_at)
                   ELSE (:now::timestamp - INTERVAL '1 MINUTE' * COALESCE(u.new_topic_duration_minutes, :default_duration))
-               END",
+               END, us.new_since)",
                 now: DateTime.now,
                 last_visit: User::NewTopicDuration::LAST_VISIT,
                 always: User::NewTopicDuration::ALWAYS,
-                default_duration: SiteSetting.new_topic_duration_minutes
+                default_duration: SiteSetting.default_other_new_topic_duration_minutes
               ).where_values[0]
   end
 
-  def self.report(user_ids, topic_id = nil)
+  def self.report(user_id, topic_id = nil)
 
     # Sam: this is a hairy report, in particular I need custom joins and fancy conditions
     #  Dropping to sql_builder so I can make sense of it.
@@ -103,22 +130,35 @@ class TopicTrackingState
     new = TopicQuery.new_filter(Topic, "xxx").where_values.join(" AND ").gsub!("'xxx'", treat_as_new_topic_clause)
 
     sql = <<SQL
-    SELECT u.id AS user_id, topics.id AS topic_id, topics.created_at, highest_post_number, last_read_post_number, c.name AS category_name
-    FROM users u
-    FULL OUTER JOIN topics ON 1=1
+    WITH x AS (
+    SELECT u.id AS user_id,
+           topics.id AS topic_id,
+           topics.created_at,
+           highest_post_number,
+           last_read_post_number,
+           c.id AS category_id,
+           tu.notification_level
+    FROM topics
+    JOIN users u on u.id = :user_id
+    JOIN user_stats AS us ON us.user_id = u.id
+    JOIN categories c ON c.id = topics.category_id
     LEFT JOIN topic_users tu ON tu.topic_id = topics.id AND tu.user_id = u.id
-    LEFT JOIN categories c ON c.id = topics.category_id
-    WHERE u.id IN (:user_ids) AND
+    WHERE u.id = :user_id AND
           topics.archetype <> 'private_message' AND
           ((#{unread}) OR (#{new})) AND
           (topics.visible OR u.admin OR u.moderator) AND
           topics.deleted_at IS NULL AND
-          ( category_id IS NULL OR NOT c.read_restricted OR category_id IN (
+          ( NOT c.read_restricted OR u.admin OR category_id IN (
               SELECT c2.id FROM categories c2
               JOIN category_groups cg ON cg.category_id = c2.id
-              JOIN group_users gu ON gu.user_id = u.id AND cg.group_id = gu.group_id
+              JOIN group_users gu ON gu.user_id = :user_id AND cg.group_id = gu.group_id
               WHERE c2.read_restricted )
           )
+          AND NOT EXISTS( SELECT 1 FROM category_users cu
+                          WHERE last_read_post_number IS NULL AND
+                               cu.user_id = :user_id AND
+                               cu.category_id = topics.category_id AND
+                               cu.notification_level = #{CategoryUser.notification_levels[:muted]})
 
 SQL
 
@@ -126,8 +166,10 @@ SQL
       sql << " AND topics.id = :topic_id"
     end
 
+    sql << " ORDER BY topics.bumped_at DESC ) SELECT * FROM x LIMIT #{SiteSetting.max_tracked_new_unread.to_i}"
+
     SqlBuilder.new(sql)
-      .map_exec(TopicTrackingState, user_ids: user_ids, topic_id: topic_id)
+      .map_exec(TopicTrackingState, user_id: user_id, topic_id: topic_id)
 
   end
 

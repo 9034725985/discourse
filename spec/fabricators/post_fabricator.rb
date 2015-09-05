@@ -4,6 +4,12 @@ Fabricator(:post) do
   raw "Hello world"
 end
 
+Fabricator(:post_with_long_raw_content, from: :post) do
+  raw 'This is a sample post with semi-long raw content. The raw content is also more than
+      two hundred characters to satisfy any test conditions that require content longer
+      than the typical test post raw content.'
+end
+
 Fabricator(:post_with_youtube, from: :post) do
   cooked '<p><a href="http://www.youtube.com/watch?v=9bZkp7q19f0" class="onebox" target="_blank">http://www.youtube.com/watch?v=9bZkp7q19f0</a></p>'
 end
@@ -36,10 +42,12 @@ Fabricator(:reply, from: :post) do
   '
 end
 
-Fabricator(:post_with_images_in_quote_and_onebox, from: :post) do
+Fabricator(:post_with_plenty_of_images, from: :post) do
   cooked '
 <aside class="quote"><img src="/uploads/default/1/1234567890123456.jpg"></aside>
 <div class="onebox-result"><img src="/uploads/default/1/1234567890123456.jpg"></div>
+<div class="onebox"><img src="/uploads/default/1/1234567890123456.jpg"></div>
+<p>With an emoji! <img src="//cdn.discourse.org/meta/images/emoji/twitter/smile.png?v=0" title=":smile:" class="emoji" alt="smile" width="72" height="72"></p>
 '
 end
 
@@ -58,12 +66,19 @@ Fabricator(:post_with_unsized_images, from: :post) do
 '
 end
 
-Fabricator(:post_with_image_url, from: :post) do
-  cooked '<img src="http://foo.bar/image.png" width="50" height="42">'
+Fabricator(:post_with_image_urls, from: :post) do
+  cooked '
+<img src="http://foo.bar/image.png">
+<img src="http://domain.com/picture.jpg" width="50" height="42">
+'
 end
 
 Fabricator(:post_with_large_image, from: :post) do
   cooked '<img src="/uploads/default/1/1234567890123456.jpg">'
+end
+
+Fabricator(:post_with_large_image_and_title, from: :post) do
+  cooked '<img src="/uploads/default/1/1234567890123456.jpg" title="WAT">'
 end
 
 Fabricator(:post_with_uploads, from: :post) do

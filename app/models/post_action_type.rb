@@ -7,8 +7,14 @@ class PostActionType < ActiveRecord::Base
     end
 
     def types
-      @types ||= Enum.new(:bookmark, :like, :off_topic, :inappropriate, :vote,
-                          :notify_user, :notify_moderators, :spam)
+      @types ||= Enum.new(:bookmark,
+                          :like,
+                          :off_topic,
+                          :inappropriate,
+                          :vote,
+                          :notify_user,
+                          :notify_moderators,
+                          :spam)
     end
 
     def auto_action_flag_types
@@ -19,6 +25,10 @@ class PostActionType < ActiveRecord::Base
       @public_types ||= types.except(*flag_types.keys << :notify_user)
     end
 
+    def public_type_ids
+      @public_type_ids ||= public_types.values
+    end
+
     def flag_types
       @flag_types ||= types.only(:off_topic, :spam, :inappropriate, :notify_moderators)
     end
@@ -26,6 +36,10 @@ class PostActionType < ActiveRecord::Base
     # flags resulting in mod notifications
     def notify_flag_type_ids
       @notify_flag_type_ids ||= types.only(:off_topic, :spam, :inappropriate, :notify_moderators).values
+    end
+
+    def topic_flag_types
+      @topic_flag_types ||= types.only(:spam, :inappropriate, :notify_moderators)
     end
 
     def is_flag?(sym)
@@ -46,4 +60,3 @@ end
 #  id         :integer          not null, primary key
 #  position   :integer          default(0), not null
 #
-

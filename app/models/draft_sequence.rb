@@ -2,12 +2,16 @@ class DraftSequence < ActiveRecord::Base
   def self.next!(user,key)
     user_id = user
     user_id = user.id unless user.class == Fixnum
+
+    return 0 if user_id == Discourse::SYSTEM_USER_ID
+
     h = { user_id: user_id, draft_key: key }
-    c = DraftSequence.where(h).first
+    c = DraftSequence.find_by(h)
     c ||= DraftSequence.new(h)
     c.sequence ||= 0
     c.sequence += 1
     c.save
+    exec_sql("DELETE FROM drafts WHERE user_id = :user_id AND draft_key = :draft_key AND sequence < :sequence", draft_key: key, user_id: user_id, sequence: c.sequence)
     c.sequence
   end
 
@@ -37,4 +41,3 @@ end
 #
 #  index_draft_sequences_on_user_id_and_draft_key  (user_id,draft_key) UNIQUE
 #
-

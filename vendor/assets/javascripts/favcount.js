@@ -1,5 +1,5 @@
 /*
- * favcount.js v1.1.0
+ * favcount.js v1.5.0
  * http://chrishunt.co/favcount
  * Dynamically updates the favicon with a number.
  *
@@ -10,21 +10,27 @@
 (function(){
   function Favcount(icon) {
     this.icon = icon;
+    this.opacity = 0.4;
     this.canvas = document.createElement('canvas');
+    this.font = "Helvetica, Arial, sans-serif";
   }
 
   Favcount.prototype.set = function(count) {
     var self = this,
         img  = document.createElement('img');
 
+    if (Ember.testing) { return; }
+
     if (self.canvas.getContext) {
+      img.crossOrigin = "anonymous";
+
       img.onload = function() {
-        drawCanvas(self.canvas, img, normalize(count));
+        drawCanvas(self.canvas, self.opacity, self.font, img, normalize(count));
       };
 
       img.src = this.icon;
     }
-  }
+  };
 
   function normalize(count) {
     count = Math.round(count);
@@ -40,7 +46,7 @@
     }
   }
 
-  function drawCanvas(canvas, img, count) {
+  function drawCanvas(canvas, opacity, font, img, count) {
     var head = document.getElementsByTagName('head')[0],
         favicon = document.createElement('link'),
         multiplier, fontSize, context, xOffset, yOffset, border, shadow;
@@ -57,10 +63,10 @@
 
     canvas.height = canvas.width = img.width;
     context = canvas.getContext('2d');
-    context.font = 'bold ' + fontSize + 'px "helvetica", sans-serif';
+    context.font = 'bold ' + fontSize + 'px ' + font;
 
     // Draw faded favicon background
-    if (count) { context.globalAlpha = 0.4; }
+    if (count) { context.globalAlpha = opacity; }
     context.drawImage(img, 0, 0);
     context.globalAlpha = 1.0;
 
@@ -90,9 +96,7 @@
     head.appendChild(favicon);
   }
 
+  Favcount.VERSION = '1.5.0';
   this.Favcount = Favcount;
 }).call(this);
 
-(function(){
-  Favcount.VERSION = '1.1.0';
-}).call(this);

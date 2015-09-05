@@ -26,31 +26,22 @@ Discourse.LoginMethod.reopenClass({
 
     var methods = this.methods = Em.A();
 
-    /*
-     * enable_google_logins etc.
-     * */
-
-    [ "google",
+    [ "google_oauth2",
       "facebook",
       "cas",
       "twitter",
       "yahoo",
-      "github",
-      "persona"
+      "github"
     ].forEach(function(name){
-      if(Discourse.SiteSettings["enable_" + name + "_logins"]){
+      if (Discourse.SiteSettings["enable_" + name + "_logins"]) {
 
         var params = {name: name};
 
-        if(name === "persona") {
-          params.customLogin = function(){
-            navigator.id.request();
-          };
-        }
-
-        if(name === "google") {
+        if (name === "google_oauth2") {
           params.frameWidth = 850;
           params.frameHeight = 500;
+        } else if (name === "facebook") {
+          params.frameHeight = 450;
         }
 
         methods.pushObject(Discourse.LoginMethod.create(params));

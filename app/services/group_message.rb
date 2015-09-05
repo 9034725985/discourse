@@ -28,12 +28,14 @@ class GroupMessage
 
   def create
     unless sent_recently?
-      post = PostCreator.create( Discourse.system_user,
-                          target_group_names: [@group_name],
-                          archetype: Archetype.private_message,
-                          subtype: TopicSubtype.system_message,
-                          title: I18n.t("system_messages.#{@message_type}.subject_template", message_params),
-                          raw: I18n.t("system_messages.#{@message_type}.text_body_template", message_params) )
+      post = PostCreator.create(
+        Discourse.system_user,
+        target_group_names: [@group_name],
+        archetype: Archetype.private_message,
+        subtype: TopicSubtype.system_message,
+        title: I18n.t("system_messages.#{@message_type}.subject_template", message_params),
+        raw: I18n.t("system_messages.#{@message_type}.text_body_template", message_params)
+      )
       remember_message_sent
       post
     else
@@ -43,11 +45,11 @@ class GroupMessage
 
   def message_params
     @message_params ||= begin
-      h = {base_url: Discourse.base_url}.merge(@opts[:message_params]||{})
+      h = { base_url: Discourse.base_url }.merge(@opts[:message_params] || {})
       if @opts[:user]
         h.merge!({
           username: @opts[:user].username,
-          user_url: admin_user_path(@opts[:user].username)
+          user_url: user_path(@opts[:user].username)
         })
       end
       h
@@ -64,9 +66,7 @@ class GroupMessage
     $redis.setex(sent_recently_key, @opts[:limit_once_per].try(:to_i) || 86_400, 1) unless @opts[:limit_once_per] == false
   end
 
-  private
-
-    def sent_recently_key
-      "grpmsg:#{@group_name}:#{@message_type}:#{@opts[:user] ? @opts[:user].username : ''}"
-    end
+  def sent_recently_key
+    "grpmsg:#{@group_name}:#{@message_type}:#{@opts[:user] ? @opts[:user].username : ''}"
+  end
 end

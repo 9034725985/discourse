@@ -1,20 +1,20 @@
 class Admin::ApiController < Admin::AdminController
 
   def index
-    render_serialized(ApiKey.all.to_a, ApiKeySerializer)
+    render_serialized(ApiKey.where(hidden: false).to_a, ApiKeySerializer)
   end
 
   def regenerate_key
-    api_key = ApiKey.where(id: params[:id]).first
-    raise Discourse::NotFound.new if api_key.blank?
+    api_key = ApiKey.find_by(id: params[:id])
+    raise Discourse::NotFound if api_key.blank?
 
     api_key.regenerate!(current_user)
     render_serialized(api_key, ApiKeySerializer)
   end
 
   def revoke_key
-    api_key = ApiKey.where(id: params[:id]).first
-    raise Discourse::NotFound.new if api_key.blank?
+    api_key = ApiKey.find_by(id: params[:id])
+    raise Discourse::NotFound if api_key.blank?
 
     api_key.destroy
     render nothing: true

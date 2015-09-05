@@ -318,13 +318,26 @@
 
   // Build default order from insertion order.
   Markdown.buildBlockOrder = function(d) {
-    var ord = [];
+    var ord = [[]];
     for ( var i in d ) {
       if ( i === "__order__" || i === "__call__" )
         continue;
-      ord.push( i );
+
+      var priority = d[i].priority || 0;
+      ord[priority] = ord[priority] || [];
+      ord[priority].push( i );
     }
-    d.__order__ = ord;
+
+    var flattend = [];
+    for (i=ord.length-1; i>=0; i--){
+      if (ord[i]) {
+        for (var j=0; j<ord[i].length; j++){
+          flattend.push(ord[i][j]);
+        }
+      }
+    }
+
+    d.__order__ = flattend;
   };
 
   // Build patterns for inline matcher
@@ -335,7 +348,7 @@
       // __foo__ is reserved and not a pattern
       if ( i.match( /^__.*__$/) )
         continue;
-      var l = i.replace( /([\\.*+?|()\[\]{}])/g, "\\$1" )
+      var l = i.replace( /([\\.*+?^$|()\[\]{}])/g, "\\$1" )
                .replace( /\n/, "\\n" );
       patterns.push( i.length === 1 ? l : "(?:" + l + ")" );
     }
@@ -437,11 +450,15 @@
   };
 
   function escapeHTML( text ) {
-    return text.replace( /&/g, "&amp;" )
-               .replace( /</g, "&lt;" )
-               .replace( />/g, "&gt;" )
-               .replace( /"/g, "&quot;" )
-               .replace( /'/g, "&#39;" );
+    if (text && text.length > 0) {
+      return text.replace( /&/g, "&amp;" )
+                 .replace( /</g, "&lt;" )
+                 .replace( />/g, "&gt;" )
+                 .replace( /"/g, "&quot;" )
+                 .replace( /'/g, "&#39;" );
+    } else {
+      return "";
+    }
   }
 
   function render_tree( jsonml ) {
@@ -449,7 +466,7 @@
     if ( typeof jsonml === "string" )
       return jsonml;
 
-    if ( jsonml[0] == "__RAW" ) {
+    if ( jsonml[0] === "__RAW" ) {
       return jsonml[1];
     }
 
@@ -469,8 +486,12 @@
       delete attributes.src;
     }
 
-    for ( var a in attributes )
-      tag_attrs += " " + a + '="' + escapeHTML( attributes[ a ] ) + '"';
+    for ( var a in attributes ) {
+      var escaped = escapeHTML( attributes[ a ]);
+      if (escaped && escaped.length) {
+        tag_attrs += " " + a + '="' + escaped + '"';
+      }
+    }
 
     // be careful about adding whitespace here for inline elements
     if ( tag === "img" || tag === "br" || tag === "hr" )
@@ -643,7 +664,8 @@
   var DialectHelpers = {};
   DialectHelpers.inline_until_char = function( text, want ) {
     var consumed = 0,
-        nodes = [];
+        nodes = [],
+        patterns = this.dialect.inline.__patterns__.replace('|_|', '|');
 
     while ( true ) {
       if ( text.charAt( consumed ) === want ) {
@@ -654,10 +676,10 @@
 
       if ( consumed >= text.length ) {
         // No closing char found. Abort.
-        return null;
+        return [consumed, null, nodes];
       }
 
-      var res = this.dialect.inline.__oneElement__.call(this, text.substr( consumed ) );
+      var res = this.dialect.inline.__oneElement__.call(this, text.substr( consumed ), patterns, [text.substr(0, consumed)]);
       consumed += res[ 0 ];
       // Add any returned nodes.
       nodes.push.apply( nodes, res.slice( 1 ) );
@@ -679,6 +701,9 @@
       mk_block = MarkdownHelpers.mk_block,
       isEmpty = MarkdownHelpers.isEmpty,
       inline_until_char = DialectHelpers.inline_until_char;
+
+  // A robust regexp for matching URLs. Thakns: https://gist.github.com/dperini/729294
+  var urlRegexp = /(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]+-?)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?/i.source;
 
   /**
    * Gruber dialect
@@ -813,7 +838,6 @@
         // TODO: Cache this regexp for certain depths.
         // Create a regexp suitable for matching an li for a given stack depth
         function regex_for_depth( depth ) {
-
           return new RegExp(
             // m[1] = indent, m[2] = list_type
             "(?:^(" + indent_re + "{0," + depth + "} {0,3})(" + any_list + ")\\s+)|" +
@@ -859,8 +883,11 @@
               replace = new RegExp("^" + indent_re + "{" + depth + "}", "gm"),
               ret = [];
 
+
           while ( blocks.length > 0 ) {
-            if ( re.exec( blocks[0] ) ) {
+            // HACK: Fixes a v8 issue
+            test = blocks[0].replace(/^ {8,}/, '        ');
+            if ( re.exec( test ) ) {
               var b = blocks.shift(),
                   // Now remove that indent
                   x = b.replace( replace, "");
@@ -1001,16 +1028,24 @@
             } // tight_search
 
             if ( li_accumulate.length ) {
-              add( last_li, loose, this.processInline( li_accumulate ), nl );
 
-              // Let's not creating a trailing \n after content in the li
-              if(last_li[last_li.length-1] === "\n") {
-                last_li.pop();
+              var contents = this.processBlock(li_accumulate, []),
+                  firstBlock = contents[0];
+
+              if (firstBlock) {
+                firstBlock.shift();
+                contents.splice.apply(contents, [0, 1].concat(firstBlock));
+                add( last_li, loose, contents, nl );
+
+                // Let's not creating a trailing \n after content in the li
+                if(last_li[last_li.length-1] === "\n") {
+                  last_li.pop();
+                }
+
+                // Loose mode will have been dealt with. Reset it
+                loose = false;
+                li_accumulate = "";
               }
-
-              // Loose mode will have been dealt with. Reset it
-              loose = false;
-              li_accumulate = "";
             }
 
             // Look at the next block - we might have a loose list. Or an extra
@@ -1027,11 +1062,11 @@
 
             var next_block = next[0] && next[0].valueOf() || "";
 
-            if ( next_block.match(is_list_re) || (next_block.match(/^ /) && (!next_block.match(/^ *\>/))) ) {
+            if ( next_block.match(is_list_re) )  {
               block = next.shift();
 
               // Check for an HR following a list: features/lists/hr_abutting
-              var hr = this.dialect.block.horizRule( block, next );
+              var hr = this.dialect.block.horizRule.call( this, block, next );
 
               if ( hr ) {
                 ret.push.apply(ret, hr);
@@ -1115,7 +1150,7 @@
       },
 
       referenceDefn: function referenceDefn( block, next) {
-        var re = /^\s*\[(.*?)\]:\s*(\S+)(?:\s+(?:(['"])(.*)\3|\((.*?)\)))?\n?/;
+        var re = /^\s*\[([^\[\]]+)\]:\s*(\S+)(?:\s+(?:(['"])(.*)\3|\((.*?)\)))?\n?/;
         // interesting matches are [ , ref_id, url, , title, title ]
 
         if ( !block.match(re) )
@@ -1142,30 +1177,42 @@
     inline: {
 
       __oneElement__: function oneElement( text, patterns_or_re, previous_nodes ) {
-        var m,
-            res;
 
+        // PERF NOTE: rewritten to avoid greedy match regex \([\s\S]*?)(...)\
+        // greedy match performs horribly with large inline blocks, it can be so
+        // slow it will crash chrome
         patterns_or_re = patterns_or_re || this.dialect.inline.__patterns__;
-        var re = new RegExp( "([\\s\\S]*?)(" + (patterns_or_re.source || patterns_or_re) + ")" );
 
-        m = re.exec( text );
-        if (!m) {
-          // Just boring text
+        var search_re = new RegExp(patterns_or_re.source || patterns_or_re);
+        var pos = text.search(search_re);
+
+        if (pos === -1) {
           return [ text.length, text ];
-        }
-        else if ( m[1] ) {
+        } else if (pos !== 0) {
           // Some un-interesting text matched. Return that first
-          return [ m[1].length, m[1] ];
+          return [pos, text.substring(0,pos)];
         }
 
+        var match_re = new RegExp( "^(" + (patterns_or_re.source || patterns_or_re) + ")" );
+        var m = match_re.exec( text );
         var res;
-        if ( m[2] in this.dialect.inline ) {
-          res = this.dialect.inline[ m[2] ].call(
+        if ( m[1] in this.dialect.inline ) {
+          res = this.dialect.inline[ m[1] ].call(
                     this,
                     text.substr( m.index ), m, previous_nodes || [] );
+
+          // If no inline code executed, fallback
+          if (!res) {
+            var fn = this.dialect.inline[m[1][0]];
+            if (fn) {
+              res = fn.call(
+                    this,
+                    text.substr( m.index ), m, previous_nodes || [] );
+            }
+          }
         }
         // Default for now to make dev easier. just slurp special and output it.
-        res = res || [ m[2].length, m[2] ];
+        res = res || [ m[1].length, m[1] ];
         return res;
       },
 
@@ -1191,7 +1238,7 @@
         return out;
       },
 
-      // These characters are intersting elsewhere, so have rules for them so that
+      // These characters are interesting elsewhere, so have rules for them so that
       // chunks of plain text blocks don't include them
       "]": function () {},
       "}": function () {},
@@ -1210,6 +1257,9 @@
 
       "![": function image( text ) {
 
+        // Without this guard V8 crashes hard on the RegExp
+        if (text.indexOf('(') >= 0 && text.indexOf(')') === -1) { return; }
+
         // Unlike images, alt text is plain text only. no other elements are
         // allowed in there
 
@@ -1218,8 +1268,11 @@
         //
         // First attempt to use a strong URL regexp to catch things like parentheses. If it misses, use the
         // old one.
-        var m = text.match( /^!\[(.*?)][ \t]*\(((?:https?:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.])(?:[^\s()<>]+|\([^\s()<>]+\))+(?:\([^\s()<>]+\)|[^`!()\[\]{};:'".,<>?«»“”‘’\s]))\)([ \t])*(["'].*["'])?/ ) ||
-                text.match( /^!\[(.*?)\][ \t]*\([ \t]*([^")]*?)(?:[ \t]+(["'])(.*?)\3)?[ \t]*\)/ );
+        var origMatcher = /^!\[(.*?)\][ \t]*\([ \t]*([^")]*?)(?:[ \t]+(["'])(.*?)\3)?[ \t]*\)/;
+            m = text.match(new RegExp("^!\\[(.*?)][ \\t]*\\((" + urlRegexp + ")\\)([ \\t])*([\"'].*[\"'])?")) ||
+                text.match(origMatcher);
+
+        if (m && m[2].indexOf(")]") !== -1) { m = text.match(origMatcher); }
 
         if ( m ) {
           if ( m[2] && m[2][0] === "<" && m[2][m[2].length-1] === ">" )
@@ -1249,13 +1302,25 @@
 
       "[": function link( text ) {
 
+        var open = 1;
+        for (var i=0; i<text.length; i++) {
+          var c = text.charAt(i);
+          if (c === '[') { open++; }
+          if (c === ']') { open--; }
+
+          if (open > 3) { return [1, "["]; }
+        }
+
         var orig = String(text);
         // Inline content is possible inside `link text`
         var res = inline_until_char.call( this, text.substr(1), "]" );
 
         // No closing ']' found. Just consume the [
-        if ( !res )
-          return [ 1, "[" ];
+        if ( !res[1] ) {
+          return [ res[0] + 1, text.charAt(0) ].concat(res[2]);
+        }
+
+        if ( res[0] == 1 ) { return [ 2, "[]" ]; } // empty link found.
 
         var consumed = 1 + res[ 0 ],
             children = res[ 1 ],
@@ -1272,7 +1337,7 @@
         // back based on if there a matching ones in the url
         //    ([here](/url/(test))
         // The parens have to be balanced
-        var m = text.match( /^\s*\([ \t]*([^"']*)(?:[ \t]+(["'])(.*?)\2)?[ \t]*\)/ );
+        var m = text.match( /^\s*\([ \t]*([^"'\s]*)(?:[ \t]+(["'])(.*?)\2)?[ \t]*\)/ );
         if ( m ) {
           var url = m[1].replace(/\s+$/, '');
           consumed += m[0].length;
@@ -1309,10 +1374,18 @@
           return [ consumed, link ];
         }
 
+        if (text.indexOf('(') === 0 && text.indexOf(')') !== -1) {
+          m = text.match(new RegExp("^\\((" + urlRegexp + ")\\)"));
+          if (m && m[1]) {
+            consumed += m[0].length;
+            link = ["link", {href: m[1]}].concat(children);
+            return [consumed, link];
+          }
+        }
+
         // [Alt text][id]
         // [Alt text] [id]
         m = text.match( /^\s*\[(.*?)\]/ );
-
         if ( m ) {
 
           consumed += m[ 0 ].length;
@@ -1320,12 +1393,14 @@
           // [links][] uses links as its reference
           attrs = { ref: ( m[ 1 ] || String(children) ).toLowerCase(),  original: orig.substr( 0, consumed ) };
 
-          link = [ "link_ref", attrs ].concat( children );
+          if (children && children.length > 0) {
+            link = [ "link_ref", attrs ].concat( children );
 
-          // We can't check if the reference is known here as it likely wont be
-          // found till after. Check it in md tree->hmtl tree conversion.
-          // Store the original so that conversion can revert if the ref isn't found.
-          return [ consumed, link ];
+            // We can't check if the reference is known here as it likely wont be
+            // found till after. Check it in md tree->hmtl tree conversion.
+            // Store the original so that conversion can revert if the ref isn't found.
+            return [ consumed, link ];
+          }
         }
 
         // Another check for references
@@ -1333,10 +1408,10 @@
         if (m &&
             (/^(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!10(?:\.\d{1,3}){3})(?!127(?:\.\d{1,3}){3})(?!169\.254(?:\.\d{1,3}){2})(?!192\.168(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]+-?)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]+-?)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/i.test(m[2]) ||
              /(\/[\w~,;\-\./?%&+#=]*)/.test(m[2]))) {
-          var attrs = create_attrs.call(this);
+          attrs = create_attrs.call(this);
           create_reference(attrs, m);
 
-          return [ m[0].length ]
+          return [ m[0].length ];
         }
 
         // [id]

@@ -11,6 +11,7 @@ class UserActionSerializer < ApplicationSerializer
              :target_name,
              :target_username,
              :post_number,
+             :post_id,
              :reply_to_post_number,
              :username,
              :name,
@@ -21,47 +22,66 @@ class UserActionSerializer < ApplicationSerializer
              :title,
              :deleted,
              :hidden,
-             :moderator_action
+             :post_type,
+             :action_code,
+             :edit_reason,
+             :category_id,
+             :uploaded_avatar_id,
+             :closed,
+             :archived,
+             :acting_uploaded_avatar_id
 
   def excerpt
-    PrettyText.excerpt(object.cooked,300) if object.cooked
+    cooked = object.cooked || PrettyText.cook(object.raw)
+    PrettyText.excerpt(cooked, 300, keep_emojis: true) if cooked
   end
 
   def avatar_template
-    avatar_for(
-      object.email,
-      object.use_uploaded_avatar,
-      object.uploaded_avatar_template,
-      object.uploaded_avatar_id
-    )
+    User.avatar_template(object.username, object.uploaded_avatar_id)
   end
 
   def acting_avatar_template
-    avatar_for(
-                object.acting_email,
-                object.acting_use_uploaded_avatar,
-                object.acting_uploaded_avatar_template,
-                object.acting_uploaded_avatar_id
-    )
+    User.avatar_template(object.acting_username, object.acting_uploaded_avatar_id)
+  end
+
+  def include_acting_avatar_template?
+    object.acting_username.present?
+  end
+
+  def include_name?
+    SiteSetting.enable_names?
+  end
+
+  def include_target_name?
+    include_name?
+  end
+
+  def include_acting_name?
+    include_name?
   end
 
   def slug
     Slug.for(object.title)
   end
 
-  def moderator_action
-    object.post_type == Post.types[:moderator_action]
+  def include_slug?
+    object.title.present?
   end
 
-  private
-  def avatar_for(email, use_uploaded_avatar, uploaded_avatar_template, uploaded_avatar_id)
-    # NOTE: id is required for cases where the template is blank (during initial population)
-    User.new(
-      email: email,
-      use_uploaded_avatar: use_uploaded_avatar,
-      uploaded_avatar_template: uploaded_avatar_template,
-      uploaded_avatar_id: uploaded_avatar_id
-    ).avatar_template
+  def include_reply_to_post_number?
+    object.action_type == UserAction::REPLY
+  end
+
+  def include_edit_reason?
+    object.action_type == UserAction::EDIT
+  end
+
+  def closed
+    object.topic_closed
+  end
+
+  def archived
+    object.topic_archived
   end
 
 end

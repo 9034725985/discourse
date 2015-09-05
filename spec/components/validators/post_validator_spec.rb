@@ -24,6 +24,27 @@ describe Validators::PostValidator do
     end
   end
 
+  context "too_many_posts" do
+    it "should be invalid when the user has posted too much" do
+      post.user.expects(:posted_too_much_in_topic?).returns(true)
+      validator.max_posts_validator(post)
+      expect(post.errors.count).to be > 0
+    end
+
+    it "should be allowed to edit when the user has posted too much" do
+      post.user.stubs(:posted_too_much_in_topic?).returns(true)
+      post.expects(:new_record?).returns(false)
+      validator.max_posts_validator(post)
+      expect(post.errors.count).to be(0)
+    end
+
+    it "should be valid when the user hasn't posted too much" do
+      post.user.expects(:posted_too_much_in_topic?).returns(false)
+      validator.max_posts_validator(post)
+      expect(post.errors.count).to be(0)
+    end
+  end
+
   context "invalid post" do
     it "should be invalid" do
       validator.validate(post)
@@ -43,7 +64,7 @@ describe Validators::PostValidator do
 
       it "should not add an error" do
         validator.unique_post_validator(post)
-        post.errors.count.should == 0
+        expect(post.errors.count).to eq(0)
       end
     end
 
@@ -60,8 +81,29 @@ describe Validators::PostValidator do
       it "should not add an error if post.skip_unique_check is true" do
         post.skip_unique_check = true
         validator.unique_post_validator(post)
-        post.errors.count.should == 0
+        expect(post.errors.count).to eq(0)
       end
+    end
+  end
+
+  context "post is for a static page and acting_user is an admin" do
+    before do
+      @tos_post = build(:post)
+      @tos_post.acting_user = Fabricate(:admin)
+      SiteSetting.stubs(:tos_topic_id).returns(@tos_post.topic_id)
+    end
+
+    it "skips most validations" do
+      v = Validators::PostValidator.new({})
+      v.expects(:stripped_length).never
+      v.expects(:raw_quality).never
+      v.expects(:max_posts_validator).never
+      v.expects(:max_mention_validator).never
+      v.expects(:max_images_validator).never
+      v.expects(:max_attachments_validator).never
+      v.expects(:max_links_validator).never
+      v.expects(:unique_post_validator).never
+      v.validate(@tos_post)
     end
   end
 

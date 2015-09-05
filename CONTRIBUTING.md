@@ -12,11 +12,11 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
 
 3. Make sure you can reproduce your problem on our sandbox at [try.discourse.org](http://try.discourse.org)
 
-4. If this is a bug or problem that **requires any kind of extended discussion -- open [a topic on meta][m] about it**. Do *not* open a bug on GitHub.
+4. If this is a bug or problem that **requires any kind of extended discussion -- open [a topic on meta][m] about it**.
 
-5. If this is a bug or problem that is clear, simple, and is unlikely to require *any* discussion -- it is OK to open an [issue on GitHub](https://github.com/discourse/discourse/issues) with a reproduction of the bug including workflows, screenshots, or links to examples on [try.discourse.org](http://try.discourse.org). If possible, submit a Pull Request with a failing test. If you'd rather take matters into your own hands, fix the bug yourself (jump down to the "Contributing (Step-by-step)" section).
+5. If possible, submit a Pull Request with a failing test. If you'd rather take matters into your own hands, fix the bug yourself (jump down to the "Contributing (Step-by-step)" section).
 
-6. When the bug is fixed, we will do our best to update the Discourse topic or GitHub issue with a resolution.
+6. When the bug is fixed, we will do our best to update the Discourse topic.
 
 ## Requesting New Features
 
@@ -30,12 +30,14 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
 
 1. Clone the Repo:
 
-        git clone git://github.com/discourse/discourse.git  
+        git clone git://github.com/discourse/discourse.git
 
 2. Create a new Branch:
- 
+
         cd discourse
         git checkout -b new_discourse_branch
+
+ > Please keep your code clean: one feature or bug-fix per branch. If you find another bug, you want to fix while being in a new branch, please fix it in a separated branch instead.
 
 3. Code
   * Adhere to common conventions you see in the existing code
@@ -48,34 +50,15 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
   * use spaces around operators, after commas, colons, semicolons, around `{` and before `}`
   * no space after `(`, `[` or before `]`, `)`
   * use Ruby 1.9 hash syntax: prefer `{ a: 1 }` over `{ :a => 1 }`
-  * prefer `class << self; def method; end` over `def class.method` for class methods
+  * prefer `class << self; def method; end` over `def self.method` for class methods
   * prefer `{ ... }` over `do ... end` for single-line blocks, avoid using `{ ... }` for multi-line blocks
   * avoid `return` when not required
 
   > However, please note that **pull requests consisting entirely of style changes are not welcome on this project**. Style changes in the context of pull requests that also refactor code, fix bugs, improve functionality *are* welcome.
 
 5. Commit
- 
-  First, ensure that if you have several commits, they are **squashed into a single commit**:
 
-  ```
-  git remote add upstream https://github.com/discourse/discourse.git
-  git fetch upstream
-  git checkout new_discourse_branch
-  git rebase upstream/master
-  git rebase -i
-
-  < Choose 'squash' for all of your commits except the first one. >
-  < Edit the commit message to make sense, and describe all your changes. >
-
-  git push origin new_discourse_branch -f
-  ```
-
-  Now you're ready to commit:
-
-  ```
-  git commit -a
-  ```
+  For every commit please write a short (max 72 characters) summary in the first line followed with a blank line and then more detailed descriptions of the change. Use markdown syntax for simple styling.
 
   **NEVER leave the commit message blank!** Provide a detailed, clear, and complete description of your commit!
 
@@ -83,8 +66,8 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
 6. Update your branch
 
   ```
-  git checkout master
-  git pull --rebase
+  git fetch origin
+  git rebase origin/master
   ```
 
 7. Fork
@@ -101,6 +84,21 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
 
 9. Issue a Pull Request
 
+  Before submitting a pull-request, clean up the history, go over your commits and squash together minor changes and fixes into the corresponding commits. You can squash commits with the interactive rebase command:
+
+  ```
+  git fetch origin
+  git checkout new_discourse_branch
+  git rebase origin/master
+  git rebase -i
+
+  < the editor opens and allows you to change the commit history >
+  < follow the instructions on the bottom of the editor >
+
+  git push -f mine new_discourse_branch
+  ```
+
+
   In order to make a pull request,
   * Navigate to the Discourse repository you just pushed to (e.g. https://github.com/your-user-name/discourse)
   * Click "Pull Request".
@@ -110,11 +108,22 @@ Anyone wishing to contribute to the **[Discourse/Discourse](https://github.com/d
   * Ensure that the "Files Changed" incorporate all of your changes.
   * Fill in some details about your potential patch including a meaningful title.
   * Click "Send pull request".
-  
+
   Thanks for that -- we'll get to your pull request ASAP, we love pull requests!
 
 10. Responding to Feedback
 
   The Discourse team may recommend adjustments to your code. Part of interacting with a healthy open-source community requires you to be open to learning new techniques and strategies; *don't get discouraged!* Remember: if the Discourse team suggest changes to your code, **they care enough about your work that they want to include it**, and hope that you can assist by implementing those revisions on your own.
-  
+
+  > Though we ask you to clean your history and squash commit before submitting a pull-request, please do not change any commits you've submitted already (as other work might be build on top).
+
+## Translations
+
+Translators can do their work in our [Transifex project](https://www.transifex.com/projects/p/discourse-org/). For more information, please see these how-to topics:
+
+* [Contributing a translation to Discourse](https://meta.discourse.org/t/contribute-a-translation-to-discourse/14882)
+* [How to add a new language](https://meta.discourse.org/t/how-to-add-a-new-language/14970)
+
+
+
 [m]: http://meta.discourse.org

@@ -7,6 +7,7 @@ module DiscourseUpdates
         DiscourseVersionCheck.new(
           installed_version: Discourse::VERSION::STRING,
           installed_sha: (Discourse.git_version == 'unknown' ? nil : Discourse.git_version),
+          installed_describe: `git describe --dirty`,
           updated_at: nil
         )
       else
@@ -15,9 +16,15 @@ module DiscourseUpdates
           critical_updates: critical_updates_available?,
           installed_version: Discourse::VERSION::STRING,
           installed_sha: (Discourse.git_version == 'unknown' ? nil : Discourse.git_version),
+          installed_describe: `git describe --dirty`,
           missing_versions_count: missing_versions_count,
           updated_at: updated_at
         )
+      end
+
+      # replace -commit_count with +commit_count
+      if version_info.installed_describe =~ /-(\d+)-/
+        version_info.installed_describe = version_info.installed_describe.gsub(/-(\d+)-.*/, " +#{$1}")
       end
 
       if SiteSetting.version_checks?
@@ -72,6 +79,33 @@ module DiscourseUpdates
       end"
     end
 
+    def missing_versions=(versions)
+      # delete previous list from redis
+      prev_keys = $redis.lrange(missing_versions_list_key, 0, 4)
+      if prev_keys
+        $redis.del prev_keys
+        $redis.del(missing_versions_list_key)
+      end
+
+      if versions.present?
+        # store the list in redis
+        version_keys = []
+        versions[0,5].each do |v|
+          key = "#{missing_versions_key_prefix}:#{v['version']}"
+          $redis.mapped_hmset key, v
+          version_keys << key
+        end
+        $redis.rpush missing_versions_list_key, version_keys
+      end
+
+      versions || []
+    end
+
+    def missing_versions
+      keys = $redis.lrange(missing_versions_list_key, 0, 4) # max of 5 versions
+      keys.present? ? keys.map { |k| $redis.hgetall(k) } : []
+    end
+
 
     private
 
@@ -93,6 +127,14 @@ module DiscourseUpdates
 
       def updated_at_key
         'last_version_check_at'
+      end
+
+      def missing_versions_list_key
+        'missing_versions'
+      end
+
+      def missing_versions_key_prefix
+        'missing_version'
       end
   end
 end

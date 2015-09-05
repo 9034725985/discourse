@@ -17,6 +17,10 @@ class Site
     PostActionType.ordered
   end
 
+  def topic_flag_types
+    post_action_types.where(name_key: ['inappropriate', 'spam', 'notify_moderators'])
+  end
+
   def notification_types
     Notification.types
   end
@@ -25,52 +29,70 @@ class Site
     TrustLevel.all
   end
 
-  def group_names
-    @group_name ||= Group.pluck(:name)
+  def groups
+    @groups ||= Group.order(:name).map { |g| { id: g.id, name: g.name } }
+  end
+
+  def user_fields
+    UserField.all
   end
 
   def categories
     @categories ||= begin
       categories = Category
         .secured(@guardian)
-        .includes(:topic_only_relative_url)
+        .includes(:topic_only_relative_url, :subcategories)
         .order(:position)
-        .to_a
+
+      unless SiteSetting.allow_uncategorized_topics
+        categories = categories.where('categories.id <> ?', SiteSetting.uncategorized_category_id)
+      end
+
+      categories = categories.to_a
 
       allowed_topic_create = Set.new(Category.topic_create_allowed(@guardian).pluck(:id))
 
-      categories.each do |category|
-        category.permission = CategoryGroup.permission_types[:full] if allowed_topic_create.include?(category.id)
+      by_id = {}
+
+      category_user = {}
+      unless @guardian.anonymous?
+        category_user = Hash[*CategoryUser.where(user: @guardian.user).pluck(:category_id, :notification_level).flatten]
       end
+
+      categories.each do |category|
+        category.notification_level = category_user[category.id]
+        category.permission = CategoryGroup.permission_types[:full] if allowed_topic_create.include?(category.id)
+        category.has_children = category.subcategories.present?
+        by_id[category.id] = category
+      end
+
+      categories.reject! { |c| c.parent_category_id && !by_id[c.parent_category_id] }
       categories
     end
+  end
+
+  def suppressed_from_homepage_category_ids
+    categories.select { |c| c.suppress_from_homepage == true }.map(&:id)
   end
 
   def archetypes
     Archetype.list.reject { |t| t.id == Archetype.private_message }
   end
 
-  def cache_key
-    k = "site_json_cats_"
-    k << @guardian.secure_category_ids.join("_") if @guardian
-  end
-
-  def self.cached_json(guardian)
+  def self.json_for(guardian)
 
     if guardian.anonymous? && SiteSetting.login_required
-      return {}.to_json
+      return {
+        periods: TopTopic.periods.map(&:to_s),
+        filters: Discourse.filters.map(&:to_s),
+        user_fields: UserField.all.map do |userfield|
+          UserFieldSerializer.new(userfield, root: false, scope: guardian)
+        end
+      }.to_json
     end
 
-    # Sam: bumping this way down, SiteSerializer will serialize post actions as well,
-    #   On my local this was not being flushed as post actions types changed, it turn this
-    #   broke local.
     site = Site.new(guardian)
-    #Discourse.cache.fetch(site.cache_key, family: "site", expires_in: 1.minute) do
-    MultiJson.dump(SiteSerializer.new(site, root: false))
-    #end
+    MultiJson.dump(SiteSerializer.new(site, root: false, scope: guardian))
   end
 
-  def self.invalidate_cache
-    Discourse.cache.delete_by_family("site")
-  end
 end

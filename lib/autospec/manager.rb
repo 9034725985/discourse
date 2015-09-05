@@ -18,7 +18,13 @@ class Autospec::Manager
     @queue = []
     @mutex = Mutex.new
     @signal = ConditionVariable.new
-    @runners = [ruby_runner, javascript_runner]
+    @runners = [ruby_runner]
+
+    if ENV["QUNIT"] == "1"
+      @runners << javascript_runner
+    else
+      puts "Skipping JS tests, run them in the browser at /qunit or add QUNIT=1 to env"
+    end
   end
 
   def run
@@ -62,7 +68,7 @@ class Autospec::Manager
   def ensure_all_specs_will_run
     puts "@@@@@@@@@@@@ ensure_all_specs_will_run" if @debug
     @runners.each do |runner|
-      @queue << ['spec', 'spec', runner] unless @queue.any? { |f, s, r| s == "spec" && r == runner }
+      @queue << ['spec', 'spec', runner] unless @queue.any? { |_, s, r| s == "spec" && r == runner }
     end
   end
 
@@ -133,6 +139,7 @@ class Autospec::Manager
     @queue.shift if current[0] == "focus"
     # focus on the first 10 failed specs
     failed_specs = runner.failed_specs[0..10]
+    puts "@@@@@@@@@@@@ failed_spces --> #{failed_specs}" if @debug
     # focus on the failed specs
     @queue.unshift ["focus", failed_specs.join(" "), runner] if failed_specs.length > 0
   end
@@ -151,7 +158,7 @@ class Autospec::Manager
     end
 
     Thread.start do
-      Listen.to('.', options) do |modified, added, removed|
+      Listen.to('.', options) do |modified, added, _|
         process_change([modified, added].flatten.compact)
       end
     end
@@ -186,7 +193,7 @@ class Autospec::Manager
         end
       end
       # special watcher for styles/templates
-      Autospec::ReloadCss::WATCHERS.each do |k,v|
+      Autospec::ReloadCss::WATCHERS.each do |k, _|
         matches = []
         matches << file if k.match(file)
         Autospec::ReloadCss.run_on_change(matches) if matches.present?
@@ -219,7 +226,7 @@ class Autospec::Manager
       puts "@@@@@@@@@@@@ #{@queue}" if @debug
       specs.each do |file, spec, runner|
         # make sure there's no other instance of this spec in the queue
-        @queue.delete_if { |f, s, r| s.strip == spec.strip && r == runner }
+        @queue.delete_if { |_, s, r| s.strip == spec.strip && r == runner }
         # deal with focused specs
         if @queue.first && @queue.first[0] == "focus"
           focus = @queue.shift

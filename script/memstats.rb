@@ -86,31 +86,41 @@ def consume_mapping( map_lines, totals )
   return m
 end
 
+def create_memstats_not_available( totals )
+  Mapping::FIELDS.each do |field|
+    totals[field] += Float::NAN
+  end
+end
+
 abort 'usage: memstats [pid]' unless ARGV.first
 pid = ARGV.shift.to_i
 totals = Hash.new(0)
 mappings = []
 
-File.open( "/proc/#{pid}/smaps" ) do |smaps|
+begin
+  File.open( "/proc/#{pid}/smaps" ) do |smaps|
 
-  map_lines = []
+    map_lines = []
 
-  loop do
-    break if smaps.eof?
-    line = smaps.readline.strip
-    case line
-    when /\w+:\s+/
-      map_lines << line
-    when /[0-9a-f]+:[0-9a-f]+\s+/
-      if map_lines.size > 0 then
-        mappings << consume_mapping( map_lines, totals )
+    loop do
+      break if smaps.eof?
+      line = smaps.readline.strip
+      case line
+      when /\w+:\s+/
+        map_lines << line
+      when /[0-9a-f]+:[0-9a-f]+\s+/
+        if map_lines.size > 0 then
+          mappings << consume_mapping( map_lines, totals )
+        end
+        map_lines.clear
+        map_lines << line
+      else
+        break
       end
-      map_lines.clear
-      map_lines << line
-    else
-      break
     end
   end
+rescue
+  create_memstats_not_available( totals )
 end
 
 # http://rubyforge.org/snippet/download.php?type=snippet&id=511
@@ -127,10 +137,18 @@ def get_commandline( pid )
   return commandline.join(' ')
 end
 
-
-puts "#{"Process:".ljust(20)} #{pid}"
-puts "#{"Command Line:".ljust(20)} #{get_commandline(pid)}"
-puts "Memory Summary:"
-totals.keys.sort.each do |k|
-  puts "  #{k.ljust(20)} #{format_number( totals[k] ).rjust(12)} kB"
+if ARGV.include? '--yaml'
+  require 'yaml'
+  puts Hash[*totals.map do |k,v|
+    [k + '_kb', v]
+  end.flatten].to_yaml
+else
+  puts "#{"Process:".ljust(20)} #{pid}"
+  puts "#{"Command Line:".ljust(20)} #{get_commandline(pid)}"
+  puts "Memory Summary:"
+  totals.keys.sort.each do |k|
+    puts "  #{k.ljust(20)} #{format_number( totals[k] ).rjust(12)} kB"
+  end
 end
+
+

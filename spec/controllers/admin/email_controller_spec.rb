@@ -3,7 +3,7 @@ require 'spec_helper'
 describe Admin::EmailController do
 
   it "is a subclass of AdminController" do
-    (Admin::EmailController < Admin::AdminController).should be_true
+    expect(Admin::EmailController < Admin::AdminController).to eq(true)
   end
 
   let!(:user) { log_in(:admin) }
@@ -27,23 +27,34 @@ describe Admin::EmailController do
     end
   end
 
-  context '.logs' do
+  context '.sent' do
     before do
-      xhr :get, :logs
+      xhr :get, :sent
     end
 
     subject { response }
-    it { should be_success }
+    it { is_expected.to be_success }
+  end
+
+  context '.skipped' do
+    before do
+      xhr :get, :skipped
+    end
+
+    subject { response }
+    it { is_expected.to be_success }
   end
 
   context '.test' do
     it 'raises an error without the email parameter' do
-      lambda { xhr :post, :test }.should raise_error(ActionController::ParameterMissing)
+      expect { xhr :post, :test }.to raise_error(ActionController::ParameterMissing)
     end
 
     context 'with an email address' do
       it 'enqueues a test email job' do
-        Jobs.expects(:enqueue).with(:test_email, to_address: 'eviltrout@test.domain')
+        job_mock = mock
+        Jobs::TestEmail.expects(:new).returns(job_mock)
+        job_mock.expects(:execute).with(to_address: 'eviltrout@test.domain')
         xhr :post, :test, email_address: 'eviltrout@test.domain'
       end
     end
@@ -51,7 +62,7 @@ describe Admin::EmailController do
 
   context '.preview_digest' do
     it 'raises an error without the last_seen_at parameter' do
-      lambda { xhr :get, :preview_digest }.should raise_error(ActionController::ParameterMissing)
+      expect { xhr :get, :preview_digest }.to raise_error(ActionController::ParameterMissing)
     end
 
     it "previews the digest" do

@@ -1,7 +1,7 @@
 # Post processing that we can do after a post has already been cooked.
 # For example, inserting the onebox content, or image sizes/thumbnails.
 
-require_dependency "oneboxer"
+require_dependency 'url_helper'
 
 class CookedPostProcessor
   include ActionView::Helpers::NumberHelper
@@ -10,29 +10,32 @@ class CookedPostProcessor
     @dirty = false
     @opts = opts
     @post = post
+    @previous_cooked = (@post.cooked || "").dup
     @doc = Nokogiri::HTML::fragment(post.cooked)
     @size_cache = {}
   end
 
-  def post_process
-    keep_reverse_index_up_to_date
-    post_process_images
-    post_process_oneboxes
-    optimize_urls
-    pull_hotlinked_images
+  def post_process(bypass_bump = false)
+    DistributedMutex.synchronize("post_process_#{@post.id}") do
+      keep_reverse_index_up_to_date
+      post_process_images
+      post_process_oneboxes
+      optimize_urls
+      pull_hotlinked_images(bypass_bump)
+    end
   end
 
   def keep_reverse_index_up_to_date
     upload_ids = Set.new
 
-    @doc.search("a").each do |a|
+    @doc.css("a[href]").each do |a|
       href = a["href"].to_s
       if upload = Upload.get_from_url(href)
         upload_ids << upload.id
       end
     end
 
-    @doc.search("img").each do |img|
+    @doc.css("img[src]").each do |img|
       src = img["src"].to_s
       if upload = Upload.get_from_url(src)
         upload_ids << upload.id
@@ -53,42 +56,84 @@ class CookedPostProcessor
     return if images.blank?
 
     images.each do |img|
-      src, width, height = img["src"], img["width"], img["height"]
       limit_size!(img)
       convert_to_link!(img)
-      @dirty |= (src != img["src"]) || (width.to_i != img["width"].to_i) || (height.to_i != img["height"].to_i)
     end
 
     update_topic_image(images)
   end
 
   def extract_images
-    # do not extract images inside oneboxes or quotes
-    @doc.css("img") - @doc.css(".onebox-result img") - @doc.css(".quote img")
+    # all image with a src attribute
+    @doc.css("img[src]") -
+    # minus, data images
+    @doc.css("img[src^='data']") -
+    # minus, emojis
+    @doc.css("img.emoji") -
+    # minus, image inside oneboxes
+    oneboxed_images -
+    # minus, images inside quotes
+    @doc.css(".quote img")
+  end
+
+  def oneboxed_images
+    @doc.css(".onebox-result img, .onebox img")
   end
 
   def limit_size!(img)
-    w, h = get_size_from_image_sizes(img["src"], @opts[:image_sizes]) || get_size(img["src"])
+    # retrieve the size from
+    #  1) the width/height attributes
+    #  2) the dimension from the preview (image_sizes)
+    #  3) the dimension of the original image (HTTP request)
+    w, h = get_size_from_attributes(img) ||
+           get_size_from_image_sizes(img["src"], @opts[:image_sizes]) ||
+           get_size(img["src"])
     # limit the size of the thumbnail
     img["width"], img["height"] = ImageSizer.resize(w, h)
+  end
+
+  def get_size_from_attributes(img)
+    w, h = img["width"].to_i, img["height"].to_i
+    return [w, h] unless w <= 0 || h <= 0
+    # if only width or height are specified attempt to scale image
+    if w > 0 || h > 0
+      w = w.to_f
+      h = h.to_f
+      original_width, original_height = get_size(img["src"]).map {|integer| integer.to_f}
+      if w > 0
+        ratio = w/original_width
+        return [w.floor, (original_height*ratio).floor]
+      else
+        ratio = h/original_height
+        return [(original_width*ratio).floor, h.floor]
+      end
+    end
   end
 
   def get_size_from_image_sizes(src, image_sizes)
     return unless image_sizes.present?
     image_sizes.each do |image_size|
       url, size = image_size[0], image_size[1]
-      return [size["width"], size["height"]] if url.include?(src)
+      if url && url.include?(src) &&
+         size && size["width"].to_i > 0 && size["height"].to_i > 0
+        return [size["width"], size["height"]]
+      end
     end
   end
 
   def get_size(url)
+    return @size_cache[url] if @size_cache.has_key?(url)
+
     absolute_url = url
     absolute_url = Discourse.base_url_no_prefix + absolute_url if absolute_url =~ /^\/[^\/]/
     # FastImage fails when there's no scheme
-    absolute_url = (SiteSetting.use_ssl? ? "https:" : "http:") + absolute_url if absolute_url.start_with?("//")
+    absolute_url = SiteSetting.scheme + ":" + absolute_url if absolute_url.start_with?("//")
+
     return unless is_valid_image_url?(absolute_url)
+
     # we can *always* crawl our own images
     return unless SiteSetting.crawl_images? || Discourse.store.has_been_uploaded?(url)
+
     @size_cache[url] ||= FastImage.size(absolute_url)
   rescue Zlib::BufError # FastImage.size raises BufError for some gifs
   end
@@ -106,6 +151,12 @@ class CookedPostProcessor
     width, height = img["width"].to_i, img["height"].to_i
     original_width, original_height = get_size(src)
 
+    # can't reach the image...
+    if original_width.nil? || original_height.nil?
+      Rails.logger.info "Can't reach '#{src}' to get its dimension."
+      return
+    end
+
     return if original_width.to_i <= width && original_height.to_i <= height
     return if original_width.to_i <= SiteSetting.max_image_width && original_height.to_i <= SiteSetting.max_image_height
 
@@ -113,32 +164,36 @@ class CookedPostProcessor
 
     if upload = Upload.get_from_url(src)
       upload.create_thumbnail!(width, height)
-      # TODO: optimize_image!(img)
     end
 
     add_lightbox!(img, original_width, original_height, upload)
-
-    @dirty = true
   end
 
   def is_a_hyperlink?(img)
     parent = img.parent
     while parent
-      return if parent.name == "a"
+      return true if parent.name == "a"
       break unless parent.respond_to? :parent
       parent = parent.parent
     end
+    false
   end
 
   def add_lightbox!(img, original_width, original_height, upload=nil)
     # first, create a div to hold our lightbox
     lightbox = Nokogiri::XML::Node.new("div", @doc)
+    lightbox["class"] = "lightbox-wrapper"
     img.add_next_sibling(lightbox)
     lightbox.add_child(img)
 
     # then, the link to our larger image
     a = Nokogiri::XML::Node.new("a", @doc)
     img.add_next_sibling(a)
+
+    if upload && Discourse.store.internal?
+      a["data-download-href"] = Discourse.store.download_url(upload)
+    end
+
     a["href"] = img["src"]
     a["class"] = "lightbox"
     a.add_child(img)
@@ -156,7 +211,9 @@ class CookedPostProcessor
     informations = "#{original_width}x#{original_height}"
     informations << " #{number_to_human_size(upload.filesize)}" if upload
 
-    meta.add_child create_span_node("filename", filename)
+    a["title"] = img["title"] || filename
+
+    meta.add_child create_span_node("filename", img["title"] || filename)
     meta.add_child create_span_node("informations", informations)
     meta.add_child create_span_node("expand")
   end
@@ -175,9 +232,9 @@ class CookedPostProcessor
   end
 
   def update_topic_image(images)
-    if @post.post_number == 1
+    if @post.is_first_post?
       img = images.first
-      @post.topic.update_column(:image_url, img["src"]) if img["src"].present?
+      @post.topic.update_column(:image_url, img["src"][0...255]) if img["src"].present?
     end
   end
 
@@ -187,51 +244,66 @@ class CookedPostProcessor
       invalidate_oneboxes: !!@opts[:invalidate_oneboxes],
     }
 
-    result = Oneboxer.apply(@doc) do |url, element|
-      Oneboxer.onebox(url, args)
-    end
+    # apply oneboxes
+    Oneboxer.apply(@doc) { |url| Oneboxer.onebox(url, args) }
 
-    @dirty |= result.changed?
+    # make sure we grab dimensions for oneboxed images
+    oneboxed_images.each { |img| limit_size!(img) }
   end
 
   def optimize_urls
-    @doc.search("a").each do |a|
-      href = a["href"].to_s
-      a["href"] = schemaless absolute(href) if is_local(href)
+    %w{href data-download-href}.each do |selector|
+      @doc.css("a[#{selector}]").each do |a|
+        href = a["#{selector}"].to_s
+        a["#{selector}"] = UrlHelper.schemaless UrlHelper.absolute(href) if UrlHelper.is_local(href)
+      end
     end
 
-    @doc.search("img").each do |img|
+    @doc.css("img[src]").each do |img|
       src = img["src"].to_s
-      img["src"] = schemaless absolute(src) if is_local(src)
+      img["src"] = UrlHelper.schemaless UrlHelper.absolute(src) if UrlHelper.is_local(src)
     end
   end
 
-  def is_local(url)
-    Discourse.store.has_been_uploaded?(url) || url =~ /^\/assets\//
-  end
-
-  def absolute(url)
-    url =~ /^\/[^\/]/ ? (Discourse.asset_host || Discourse.base_url_no_prefix) + url : url
-  end
-
-  def schemaless(url)
-    url.gsub(/^https?:/, "")
-  end
-
-  def pull_hotlinked_images
-    # we don't want to run the job if we're not allowed to crawl images
-    return unless SiteSetting.crawl_images?
+  def pull_hotlinked_images(bypass_bump = false)
+    # is the job enabled?
+    return unless SiteSetting.download_remote_images_to_local?
+    # have we enough disk space?
+    return if disable_if_low_on_disk_space
     # we only want to run the job whenever it's changed by a user
-    return if @post.updated_by == Discourse.system_user
+    return if @post.last_editor_id == Discourse.system_user.id
     # make sure no other job is scheduled
     Jobs.cancel_scheduled_job(:pull_hotlinked_images, post_id: @post.id)
     # schedule the job
     delay = SiteSetting.ninja_edit_window + 1
-    Jobs.enqueue_in(delay.seconds.to_i, :pull_hotlinked_images, post_id: @post.id)
+    Jobs.enqueue_in(delay.seconds.to_i, :pull_hotlinked_images, post_id: @post.id, bypass_bump: bypass_bump)
+  end
+
+  def disable_if_low_on_disk_space
+    return false if available_disk_space >= SiteSetting.download_remote_images_threshold
+
+    SiteSetting.download_remote_images_to_local = false
+    # log the site setting change
+    reason = I18n.t("disable_remote_images_download_reason")
+    staff_action_logger = StaffActionLogger.new(Discourse.system_user)
+    staff_action_logger.log_site_setting_change("download_remote_images_to_local", true, false, { details: reason })
+
+    # also send a private message to the site contact user
+    notify_about_low_disk_space
+
+    true
+  end
+
+  def notify_about_low_disk_space
+    SystemMessage.create_from_system_user(Discourse.site_contact_user, :download_remote_images_disabled)
+  end
+
+  def available_disk_space
+    100 - `df -P #{Rails.root}/public/uploads | tail -1 | tr -s ' ' | cut -d ' ' -f 5`.to_i
   end
 
   def dirty?
-    @dirty
+    @previous_cooked != html
   end
 
   def html

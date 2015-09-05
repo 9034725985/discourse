@@ -1,58 +1,67 @@
-/*global Modernizr:true*/
-/*global assetPath:true*/
 /*global Favcount:true*/
+var DiscourseResolver = require('discourse/ember/resolver').default;
 
-/**
-  The main Discourse Application
+// Allow us to import Ember
+define('ember', ['exports'], function(__exports__) {
+  __exports__.default = Ember;
+});
 
-  @class Discourse
-  @extends Ember.Application
-**/
-Discourse = Ember.Application.createWithMixins(Discourse.Ajax, {
+window.Discourse = Ember.Application.createWithMixins(Discourse.Ajax, {
   rootElement: '#main',
-
-  // Whether the app has focus or not
-  hasFocus: true,
-
-  // Helps with integration tests
-  URL_FIXTURES: {},
+  _docTitle: document.title,
 
   getURL: function(url) {
-    // If it's a non relative URL, return it.
-    if (url.indexOf('http') === 0) return url;
+    if (!url) return url;
 
-    var u = (Discourse.BaseUri === undefined ? "/" : Discourse.BaseUri);
-    if (u[u.length-1] === '/') {
-      u = u.substring(0, u.length-1);
-    }
+    // if it's a non relative URL, return it.
+    if (!/^\/[^\/]/.test(url)) return url;
+
+    var u = Discourse.BaseUri === undefined ? "/" : Discourse.BaseUri;
+
+    if (u[u.length-1] === '/') u = u.substring(0, u.length-1);
     if (url.indexOf(u) !== -1) return url;
+    if (u.length > 0  && url[0] !== "/") url = "/" + url;
+
     return u + url;
   },
 
-  Resolver: Discourse.Resolver,
-
-  titleChanged: function() {
-    var title = "";
-    if (this.get('title')) {
-      title += "" + (this.get('title')) + " - ";
+  getURLWithCDN: function(url) {
+    url = this.getURL(url);
+    // only relative urls
+    if (Discourse.CDN && /^\/[^\/]/.test(url)) {
+      url = Discourse.CDN + url;
+    } else if (Discourse.S3CDN) {
+      url = url.replace(Discourse.S3BaseUrl, Discourse.S3CDN);
     }
-    title += Discourse.SiteSettings.title;
-    $('title').text(title);
+    return url;
+  },
+
+  Resolver: DiscourseResolver,
+
+  _titleChanged: function() {
+    var title = this.get('_docTitle') || Discourse.SiteSettings.title;
+
+    // if we change this we can trigger changes on document.title
+    // only set if changed.
+    if($('title').text() !== title) {
+      $('title').text(title);
+    }
 
     var notifyCount = this.get('notifyCount');
     if (notifyCount > 0 && !Discourse.User.currentProp('dynamic_favicon')) {
       title = "(" + notifyCount + ") " + title;
     }
-    // chrome bug workaround see: http://stackoverflow.com/questions/2952384/changing-the-window-title-when-focussing-the-window-doesnt-work-in-chrome
-    window.setTimeout(function() {
-      document.title = ".";
-      document.title = title;
-    }, 200);
-  }.observes('title', 'hasFocus', 'notifyCount'),
+
+    document.title = title;
+  }.observes('_docTitle', 'hasFocus', 'notifyCount'),
 
   faviconChanged: function() {
     if(Discourse.User.currentProp('dynamic_favicon')) {
-      new Favcount(Discourse.SiteSettings.favicon_url).set(
+      var url = Discourse.SiteSettings.favicon_url;
+      if (/^http/.test(url)) {
+        url = Discourse.getURL("/favicon/proxied?" + encodeURIComponent(url));
+      }
+      new Favcount(url).set(
         this.get('notifyCount')
       );
     }
@@ -61,108 +70,12 @@ Discourse = Ember.Application.createWithMixins(Discourse.Ajax, {
   // The classes of buttons to show on a post
   postButtons: function() {
     return Discourse.SiteSettings.post_menu.split("|").map(function(i) {
-      return (i.replace(/\+/, '').capitalize());
+      return i.replace(/\+/, '').capitalize();
     });
-  }.property('Discourse.SiteSettings.post_menu'),
+  }.property(),
 
   notifyTitle: function(count) {
     this.set('notifyCount', count);
-  },
-
-  /**
-    Establishes global DOM events and bindings via jQuery.
-
-    @method bindDOMEvents
-  **/
-  bindDOMEvents: function() {
-    var $html, hasTouch;
-
-    $html = $('html');
-    hasTouch = false;
-
-    if ($html.hasClass('touch')) {
-      hasTouch = true;
-    }
-
-    if (Modernizr.prefixed("MaxTouchPoints", navigator) > 1) {
-      hasTouch = true;
-    }
-
-    if (hasTouch) {
-      $html.addClass('discourse-touch');
-      this.touch = true;
-      this.hasTouch = true;
-    } else {
-      $html.addClass('discourse-no-touch');
-      this.touch = false;
-    }
-
-    $('#main').on('click.discourse', '[data-not-implemented=true]', function(e) {
-      e.preventDefault();
-      alert(I18n.t('not_implemented'));
-      return false;
-    });
-
-    $('#main').on('click.discourse', 'a', function(e) {
-      if (e.isDefaultPrevented() || e.shiftKey || e.metaKey || e.ctrlKey) { return; }
-
-      var $currentTarget = $(e.currentTarget),
-          href = $currentTarget.attr('href');
-
-      if (!href ||
-          href === '#' ||
-          $currentTarget.attr('target') ||
-          $currentTarget.data('ember-action') ||
-          $currentTarget.data('auto-route') ||
-          $currentTarget.hasClass('ember-view') ||
-          $currentTarget.hasClass('lightbox') ||
-          href.indexOf("mailto:") === 0 ||
-          (href.match(/^http[s]?:\/\//i) && !href.match(new RegExp("^http:\\/\\/" + window.location.hostname, "i")))) {
-         return;
-      }
-
-      e.preventDefault();
-      Discourse.URL.routeTo(href);
-      return false;
-    });
-
-    $(window).focus(function() {
-      Discourse.set('hasFocus', true);
-      Discourse.set('notify', false);
-    }).blur(function() {
-      Discourse.set('hasFocus', false);
-    });
-
-    // Add a CSRF token to all AJAX requests
-    Discourse.csrfToken = $('meta[name=csrf-token]').attr('content');
-
-    $.ajaxPrefilter(function(options, originalOptions, xhr) {
-      if (!options.crossDomain) {
-        xhr.setRequestHeader('X-CSRF-Token', Discourse.csrfToken);
-      }
-    });
-
-    bootbox.animate(false);
-    bootbox.backdrop(true); // clicking outside a bootbox modal closes it
-
-    Discourse.Mobile.init();
-
-    setInterval(function(){
-      Discourse.Formatter.updateRelativeAge($('.relative-date'));
-    },60 * 1000);
-  },
-
-  /**
-    Log the current user out of Discourse
-
-    @method logout
-  **/
-  logout: function() {
-    Discourse.User.logout().then(function() {
-      // Reloading will refresh unbound properties
-      Discourse.KeyValueStore.abandonLocal();
-      window.location.pathname = Discourse.getURL('/');
-    });
   },
 
   authenticationComplete: function(options) {
@@ -171,81 +84,78 @@ Discourse = Ember.Application.createWithMixins(Discourse.Ajax, {
     return loginController.authenticationComplete(options);
   },
 
-  loginRequired: function() {
-    return (
-      Discourse.SiteSettings.login_required && !Discourse.User.current()
-    );
-  }.property(),
-
-  redirectIfLoginRequired: function(route) {
-    if(this.get('loginRequired')) { route.transitionTo('login'); }
-  },
-
   /**
-    Subscribes the current user to receive message bus notifications
-  **/
-  subscribeUserToNotifications: function() {
-    var user = Discourse.User.current();
-    if (user) {
-      var bus = Discourse.MessageBus;
-      bus.callbackInterval = Discourse.SiteSettings.polling_interval;
-      bus.enableLongPolling = true;
-      if (user.admin || user.moderator) {
-        bus.subscribe("/flagged_counts", function(data) {
-          user.set('site_flagged_posts_count', data.total);
-        });
-      }
-      bus.subscribe("/notification/" + user.get('id'), (function(data) {
-        user.set('unread_notifications', data.unread_notifications);
-        user.set('unread_private_messages', data.unread_private_messages);
-      }), user.notification_channel_position);
-
-      bus.subscribe("/categories", function(data){
-        var site = Discourse.Site.current();
-        _.each(data.categories,function(c){
-          site.updateCategory(c);
-        });
-      });
-
-    }
-  },
-
-  /**
-    Add an initializer hook for after the Discourse Application starts up.
-
-    @method addInitializer
-    @param {Function} init the initializer to add.
-  **/
-  addInitializer: function(init) {
-    Discourse.initializers = Discourse.initializers || [];
-    Discourse.initializers.push(init);
-  },
-
-  /**
-    Start up the Discourse application.
+    Start up the Discourse application by running all the initializers we've defined.
 
     @method start
   **/
   start: function() {
-    Discourse.bindDOMEvents();
-    Discourse.MessageBus.alwaysLongPoll = Discourse.Environment === "development";
-    Discourse.MessageBus.start();
-    Discourse.KeyValueStore.init("discourse_", Discourse.MessageBus);
 
-    // Developer specific functions
-    Discourse.Development.observeLiveChanges();
-    Discourse.subscribeUserToNotifications();
+    $('noscript').remove();
 
-    if (Discourse.initializers) {
-      var self = this;
-      Em.run.next(function() {
-        Discourse.initializers.forEach(function (init) {
-          init.call(self);
-        });
-      });
+    Ember.keys(requirejs._eak_seen).forEach(function(key) {
+      if (/\/pre\-initializers\//.test(key)) {
+        var module = require(key, null, null, true);
+        if (!module) { throw new Error(key + ' must export an initializer.'); }
+        Discourse.initializer(module.default);
+      }
+    });
+
+    Ember.keys(requirejs._eak_seen).forEach(function(key) {
+      if (/\/initializers\//.test(key)) {
+        var module = require(key, null, null, true);
+        if (!module) { throw new Error(key + ' must export an initializer.'); }
+
+        var init = module.default;
+        var oldInitialize = init.initialize;
+        init.initialize = function(app) {
+          oldInitialize.call(this, app.container, Discourse);
+        };
+
+        Discourse.instanceInitializer(init);
+      }
+    });
+
+  },
+
+  requiresRefresh: function(){
+    var desired = Discourse.get("desiredAssetVersion");
+    return desired && Discourse.get("currentAssetVersion") !== desired;
+  }.property("currentAssetVersion", "desiredAssetVersion"),
+
+
+  assetVersion: Ember.computed({
+    get: function() {
+      return this.get("currentAssetVersion");
+    },
+    set: function(key, val) {
+      if(val) {
+        if (this.get("currentAssetVersion")) {
+          this.set("desiredAssetVersion", val);
+        } else {
+          this.set("currentAssetVersion", val);
+        }
+      }
+      return this.get("currentAssetVersion");
     }
-  }
-
+  })
 });
 
-Discourse.Router = Discourse.Router.reopen({ location: 'discourse_location' });
+function proxyDep(propName, moduleFunc, msg) {
+  if (Discourse.hasOwnProperty(propName)) { return; }
+  Object.defineProperty(Discourse, propName, {
+    get: function() {
+      msg = msg || "import the module";
+      Ember.warn("DEPRECATION: `Discourse." + propName + "` is deprecated, " + msg + ".");
+      return moduleFunc();
+    }
+  });
+}
+
+proxyDep('computed', function() { return require('discourse/lib/computed') });
+proxyDep('Formatter', function() { return require('discourse/lib/formatter') });
+proxyDep('PageTracker', function() { return require('discourse/lib/page-tracker').default });
+proxyDep('URL', function() { return require('discourse/lib/url').default });
+proxyDep('Quote', function() { return require('discourse/lib/quote').default });
+proxyDep('debounce', function() { return require('discourse/lib/debounce').default });
+proxyDep('View', function() { return Ember.View }, "Use `Ember.View` instead");

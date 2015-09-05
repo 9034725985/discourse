@@ -5,28 +5,33 @@ module Jobs
   # This job will run on a regular basis to update statistics and denormalized data.
   # If it does not run, the site will not function properly.
   class PeriodicalUpdates < Jobs::Scheduled
-    recurrence { hourly.minute_of_hour(3, 18, 33, 48) }
+    every 15.minutes
 
     def execute(args)
-
-      # Update the average times
-      Post.calculate_avg_time
-      Topic.calculate_avg_time
-
       # Feature topics in categories
       CategoryFeaturedTopic.feature_topics
 
-      # Update view counts for users
-      UserStat.update_view_counts
-
       # Update the scores of posts
-      ScoreCalculator.new.calculate
-
-      # Refresh Hot Topics
-      HotTopic.refresh!
+      ScoreCalculator.new.calculate(1.day.ago)
 
       # Automatically close stuff that we missed
       Topic.auto_close
+
+      # Forces rebake of old posts where needed, as long as no system avatars need updating
+      unless UserAvatar.where("last_gravatar_download_attempt IS NULL").limit(1).first
+        problems = Post.rebake_old(250)
+        problems.each do |hash|
+          post_id = hash[:post].id
+          Discourse.handle_job_exception(hash[:ex], error_context(args, "Rebaking post id #{post_id}", post_id: post_id))
+        end
+      end
+
+      # rebake out of date user profiles
+      problems = UserProfile.rebake_old(250)
+      problems.each do |hash|
+        user_id = hash[:profile].user_id
+        Discourse.handle_job_exception(hash[:ex], error_context(args, "Rebaking user id #{user_id}", user_id: user_id))
+      end
     end
 
   end

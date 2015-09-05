@@ -1,13 +1,19 @@
 module RailsMultisite
   class ConnectionManagement
     CONFIG_FILE = 'config/multisite.yml'
+    DEFAULT = 'default'.freeze
+
+    def self.has_db?(db)
+      return true if db == DEFAULT
+      (defined? @@db_spec_cache) && @@db_spec_cache && @@db_spec_cache[db]
+    end
 
     def self.rails4?
       !!(Rails.version =~ /^4/)
     end
 
     def self.establish_connection(opts)
-      if opts[:db] == "default" && (!defined?(@@default_spec) || !@@default_spec)
+      if opts[:db] == DEFAULT && (!defined?(@@default_spec) || !@@default_spec)
         # don't do anything .. handled implicitly
       else
         spec = connection_spec(opts) || @@default_spec
@@ -16,25 +22,60 @@ module RailsMultisite
           handler = @@connection_handlers[spec]
           unless handler
             handler = ActiveRecord::ConnectionAdapters::ConnectionHandler.new
-            if rails4?
-              handler.establish_connection(ActiveRecord::Base, spec)
-            end
+            handler.establish_connection(ActiveRecord::Base, spec)
             @@connection_handlers[spec] = handler
           end
         else
           handler = @@default_connection_handler
-          if rails4? && !@@established_default
+          if !@@established_default
             handler.establish_connection(ActiveRecord::Base, spec)
             @@established_default = true
           end
         end
 
         ActiveRecord::Base.connection_handler = handler
-
-        unless rails4?
-          handler.establish_connection("ActiveRecord::Base", spec)
-        end
       end
+    end
+
+    def self.with_hostname(hostname)
+
+      unless defined? @@db_spec_cache
+        # just fake it for non multisite
+        yield hostname
+        return
+      end
+
+      old = current_hostname
+      connected = ActiveRecord::Base.connection_pool.connected?
+
+      establish_connection(:host => hostname) unless connected && hostname == old
+      rval = yield hostname
+
+      unless connected && hostname == old
+        ActiveRecord::Base.connection_handler.clear_active_connections!
+
+        establish_connection(:host => old)
+        ActiveRecord::Base.connection_handler.clear_active_connections! unless connected
+      end
+
+      rval
+    end
+
+    def self.with_connection(db = "default")
+      old = current_db
+      connected = ActiveRecord::Base.connection_pool.connected?
+
+      establish_connection(:db => db) unless connected && db == old
+      rval = yield db
+
+      unless connected && db == old
+        ActiveRecord::Base.connection_handler.clear_active_connections!
+
+        establish_connection(:db => old)
+        ActiveRecord::Base.connection_handler.clear_active_connections! unless connected
+      end
+
+      rval
     end
 
     def self.each_connection
@@ -59,7 +100,7 @@ module RailsMultisite
     end
 
     def self.current_db
-      db = ActiveRecord::Base.connection_pool.spec.config[:db_key] || "default"
+      ActiveRecord::Base.connection_pool.spec.config[:db_key] || "default"
     end
 
     def self.config_filename=(config_filename)
@@ -75,7 +116,6 @@ module RailsMultisite
       config[:host_names].nil? ? config[:host] : config[:host_names].first
     end
 
-
     def self.clear_settings!
       @@db_spec_cache = nil
       @@host_spec_cache = nil
@@ -83,7 +123,7 @@ module RailsMultisite
     end
 
     def self.load_settings!
-      spec_klass = rails4? ? ActiveRecord::ConnectionAdapters::ConnectionSpecification : ActiveRecord::Base::ConnectionSpecification
+      spec_klass = ActiveRecord::ConnectionAdapters::ConnectionSpecification
       configs = YAML::load(File.open(self.config_filename))
       configs.each do |k,v|
         raise ArgumentError.new("Please do not name any db default!") if k == "default"
@@ -91,7 +131,7 @@ module RailsMultisite
       end
 
       @@db_spec_cache = Hash[*configs.map do |k, data|
-        [k, spec_klass::Resolver.new(k, configs).spec]
+        [k, spec_klass::Resolver.new(configs).spec(k)]
       end.flatten]
 
       @@host_spec_cache = {}
@@ -102,38 +142,15 @@ module RailsMultisite
         end
       end
 
-      @@default_spec = spec_klass::Resolver.new(Rails.env, ActiveRecord::Base.configurations).spec
+      @@default_spec = spec_klass::Resolver.new(ActiveRecord::Base.configurations).spec(Rails.env)
       ActiveRecord::Base.configurations[Rails.env]["host_names"].each do |host|
         @@host_spec_cache[host] = @@default_spec
       end
 
       @@default_connection_handler = ActiveRecord::Base.connection_handler
 
-      # inject our connection_handler pool
-      # WARNING MONKEY PATCH
-      #
-      # see: https://github.com/rails/rails/issues/8344#issuecomment-10800848
-      if ActiveRecord::VERSION::MAJOR == 3
-        ActiveRecord::Base.send :include, NewConnectionHandler
-        ActiveRecord::Base.connection_handler = @@default_connection_handler
-      end
-
       @@connection_handlers = {}
       @@established_default = false
-    end
-
-    module NewConnectionHandler
-      def self.included(klass)
-        klass.class_eval do
-          define_singleton_method :connection_handler do
-            Thread.current[:connection_handler] || @connection_handler
-          end
-          define_singleton_method :connection_handler= do |handler|
-            @connection_handler ||= handler
-            Thread.current[:connection_handler] = handler
-          end
-        end
-      end
     end
 
 
@@ -141,15 +158,20 @@ module RailsMultisite
       @app = app
     end
 
-    def call(env)
+    def self.host(env)
       request = Rack::Request.new(env)
+      request['__ws'] || request.host
+    end
+
+    def call(env)
+      host = self.class.host(env)
       begin
 
         #TODO: add a callback so users can simply go to a domain to register it, or something
-        return [404, {}, ["not found"]] unless @@host_spec_cache[request.host]
+        return [404, {}, ["not found"]] unless @@host_spec_cache[host]
 
         ActiveRecord::Base.connection_handler.clear_active_connections!
-        self.class.establish_connection(:host => request['__ws'] || request.host)
+        self.class.establish_connection(:host => host)
         @app.call(env)
       ensure
         ActiveRecord::Base.connection_handler.clear_active_connections!

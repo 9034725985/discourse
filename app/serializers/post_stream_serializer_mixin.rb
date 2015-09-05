@@ -1,3 +1,6 @@
+require_dependency 'gap_serializer'
+require_dependency 'post_serializer'
+
 module PostStreamSerializerMixin
 
   def self.included(klass)
@@ -5,19 +8,20 @@ module PostStreamSerializerMixin
   end
 
   def post_stream
-    { posts: posts,
-      stream: object.filtered_post_ids }
+    result = { posts: posts, stream: object.filtered_post_ids }
+    result[:gaps] = GapSerializer.new(object.gaps, root: false) if object.gaps.present?
+    result
   end
 
   def posts
     return @posts if @posts.present?
     @posts = []
-    @highest_number_in_posts = 0
+    highest_number_in_posts = 0
     if object.posts
       object.posts.each_with_index do |p, idx|
-        @highest_number_in_posts = p.post_number if p.post_number > @highest_number_in_posts
+        highest_number_in_posts = p.post_number if p.post_number > highest_number_in_posts
         ps = PostSerializer.new(p, scope: scope, root: false)
-        ps.topic_slug = object.topic.slug
+        ps.add_raw = true if @options[:include_raw]
         ps.topic_view = object
         p.topic = object.topic
 

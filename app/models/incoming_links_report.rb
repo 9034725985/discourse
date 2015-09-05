@@ -8,7 +8,7 @@ class IncomingLinksReport
     @data = nil
   end
 
-  def as_json
+  def as_json(_options = nil)
     {
       type: self.type,
       title: I18n.t("reports.#{self.type}.title"),
@@ -18,7 +18,7 @@ class IncomingLinksReport
     }
   end
 
-  def self.find(type, opts={})
+  def self.find(type, _opts = {})
     report_method = :"report_#{type}"
     return nil unless respond_to?(report_method)
 
@@ -36,14 +36,17 @@ class IncomingLinksReport
     num_clicks  = link_count_per_user
     num_topics = topic_count_per_user
     report.data = []
-    num_clicks.keys.each do |username|
+    num_clicks.each_key do |username|
       report.data << {username: username, num_clicks: num_clicks[username], num_topics: num_topics[username]}
     end
     report.data = report.data.sort_by {|x| x[:num_clicks]}.reverse[0,10]
   end
 
   def self.per_user
-    @per_user_query ||= IncomingLink.where('incoming_links.created_at > ? AND incoming_links.user_id IS NOT NULL', 30.days.ago).joins(:user).group('users.username')
+    @per_user_query ||= IncomingLink
+        .where('incoming_links.created_at > ? AND incoming_links.user_id IS NOT NULL', 30.days.ago)
+        .joins(:user)
+        .group('users.username')
   end
 
   def self.link_count_per_user
@@ -51,7 +54,7 @@ class IncomingLinksReport
   end
 
   def self.topic_count_per_user
-    per_user.count('incoming_links.topic_id', distinct: true)
+    per_user.joins(:post).count("DISTINCT posts.topic_id")
   end
 
 
@@ -64,23 +67,30 @@ class IncomingLinksReport
     num_clicks  = link_count_per_domain
     num_topics = topic_count_per_domain(num_clicks.keys)
     report.data = []
-    num_clicks.keys.each do |domain|
+    num_clicks.each_key do |domain|
       report.data << {domain: domain, num_clicks: num_clicks[domain], num_topics: num_topics[domain]}
     end
     report.data = report.data.sort_by {|x| x[:num_clicks]}.reverse[0,10]
   end
 
   def self.link_count_per_domain(limit=10)
-    IncomingLink.where('created_at > ? AND domain IS NOT NULL', 30.days.ago).group('domain').order('count_all DESC').limit(limit).count
+    IncomingLink.where('incoming_links.created_at > ?', 30.days.ago)
+                .joins(:incoming_referer => :incoming_domain)
+                .group('incoming_domains.name')
+                .order('count_all DESC')
+                .limit(limit).count
   end
 
   def self.per_domain(domains)
-    IncomingLink.where('created_at > ? AND domain IN (?)', 30.days.ago, domains).group('domain')
+    IncomingLink
+        .joins(:incoming_referer => :incoming_domain)
+        .where('incoming_links.created_at > ? AND incoming_domains.name IN (?)', 30.days.ago, domains)
+        .group('incoming_domains.name')
   end
 
   def self.topic_count_per_domain(domains)
     # COUNT(DISTINCT) is slow
-    per_domain(domains).count('topic_id', distinct: true)
+    per_domain(domains).joins(:post).count("DISTINCT posts.topic_id")
   end
 
 
@@ -90,7 +100,6 @@ class IncomingLinksReport
     num_clicks = num_clicks.to_a.sort_by {|x| x[1]}.last(10).reverse # take the top 10
     report.data = []
     topics = Topic.select('id, slug, title').where('id in (?)', num_clicks.map {|z| z[0]})
-    topics = topics.all unless rails4?
     num_clicks.each do |topic_id, num_clicks_element|
       topic = topics.find {|t| t.id == topic_id}
       if topic
@@ -101,6 +110,9 @@ class IncomingLinksReport
   end
 
   def self.link_count_per_topic
-    IncomingLink.where('created_at > ? AND topic_id IS NOT NULL', 30.days.ago).group('topic_id').count
+    IncomingLink.joins(:post)
+                .where('incoming_links.created_at > ? AND topic_id IS NOT NULL', 30.days.ago)
+                .group('topic_id')
+                .count
   end
 end

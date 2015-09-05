@@ -23,11 +23,6 @@ Discourse::Application.configure do
   # Specifies the header that your server uses for sending files
   config.action_dispatch.x_sendfile_header = 'X-Accel-Redirect' # for nginx
 
-  # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
-  # the I18n.default_locale when a translation can not be found)
-  config.i18n.fallbacks = true
-
-
   # you may use other configuration here for mail eg: sendgrid
 
   config.action_mailer.delivery_method = :smtp
@@ -52,8 +47,8 @@ Discourse::Application.configure do
   # this setting enables rack_cache so it caches various requests in redis
   config.enable_rack_cache = true
 
-  # allows admins to use mini profiler
-  config.enable_mini_profiler = true
+  # allows developers to use mini profiler
+  config.load_mini_profiler = true
 
   # allows Cross-origin resource sharing (CORS) for API access in JavaScript (default to false for security).
   # See the initializer and https://github.com/cyu/rack-cors for configuration documentation.

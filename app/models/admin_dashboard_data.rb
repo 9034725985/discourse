@@ -1,24 +1,36 @@
 require_dependency 'mem_info'
 
 class AdminDashboardData
+  include StatsCacheable
 
-  REPORTS = [
+  GLOBAL_REPORTS ||= [
     'visits',
     'signups',
     'topics',
     'posts',
-    'flags',
-    'users_by_trust_level',
+    'time_to_first_response',
+    'topics_with_no_response',
     'likes',
+    'flags',
     'bookmarks',
-    'favorites',
     'emails',
+  ]
+
+  PAGE_VIEW_REPORTS ||= ['page_view_total_reqs'] + ApplicationRequest.req_types.keys.select { |r| r =~ /^page_view_/ && r !~ /mobile/ }.map { |r| r + "_reqs" }
+
+  PRIVATE_MESSAGE_REPORTS ||= [
     'user_to_user_private_messages',
     'system_private_messages',
-    'moderator_warning_private_messages',
     'notify_moderators_private_messages',
-    'notify_user_private_messages'
+    'notify_user_private_messages',
+    'moderator_warning_private_messages',
   ]
+
+  HTTP_REPORTS ||= ApplicationRequest.req_types.keys.select { |r| r =~ /^http_/ }.map { |r| r + "_reqs" }.sort
+
+  USER_REPORTS ||= ['users_by_trust_level']
+
+  MOBILE_REPORTS ||= ['mobile_visits'] + ApplicationRequest.req_types.keys.select {|r| r =~ /mobile/}.map { |r| r + "_reqs" }
 
   def problems
     [ rails_env_check,
@@ -27,6 +39,7 @@ class AdminDashboardData
       gc_checks,
       sidekiq_check || queue_size_check,
       ram_check,
+      google_oauth2_config_check,
       facebook_config_check,
       twitter_config_check,
       github_config_check,
@@ -38,19 +51,16 @@ class AdminDashboardData
       send_consumer_email_check,
       title_check,
       site_description_check,
-      access_password_removal,
       site_contact_username_check,
-      notification_email_check ].compact
+      notification_email_check
+    ].compact
   end
 
+
   def self.fetch_stats
-    AdminDashboardData.new
+    AdminDashboardData.new.as_json
   end
-  def self.fetch_cached_stats
-    # The DashboardStats job is responsible for generating and caching this.
-    stats = $redis.get(stats_cache_key)
-    stats ? JSON.parse(stats) : nil
-  end
+
   def self.stats_cache_key
     'dash-stats'
   end
@@ -59,9 +69,14 @@ class AdminDashboardData
     AdminDashboardData.new.problems
   end
 
-  def as_json
+  def as_json(_options = nil)
     @json ||= {
-      reports: REPORTS.map { |type| Report.find(type).as_json },
+      global_reports: AdminDashboardData.reports(GLOBAL_REPORTS),
+      page_view_reports: AdminDashboardData.reports(PAGE_VIEW_REPORTS),
+      private_message_reports: AdminDashboardData.reports(PRIVATE_MESSAGE_REPORTS),
+      http_reports: AdminDashboardData.reports(HTTP_REPORTS),
+      user_reports: AdminDashboardData.reports(USER_REPORTS),
+      mobile_reports: AdminDashboardData.reports(MOBILE_REPORTS),
       admins: User.admins.count,
       moderators: User.moderators.count,
       suspended: User.suspended.count,
@@ -73,13 +88,12 @@ class AdminDashboardData
     }
   end
 
-  def self.recalculate_interval
-    # Could be configurable, multisite need to support it.
-    30 # minutes
+  def self.reports(source)
+    source.map { |type| Report.find(type).as_json }
   end
 
   def rails_env_check
-    I18n.t("dashboard.rails_env_warning", env: Rails.env) unless Rails.env == 'production'
+    I18n.t("dashboard.rails_env_warning", env: Rails.env) unless Rails.env.production?
   end
 
   def host_names_check
@@ -97,15 +111,19 @@ class AdminDashboardData
 
   def queue_size_check
     queue_size = Jobs.queued
-    I18n.t('dashboard.queue_size_warning', queue_size: queue_size) unless queue_size < 100
+    I18n.t('dashboard.queue_size_warning', queue_size: queue_size) unless queue_size < 100_000
   end
 
   def ram_check
     I18n.t('dashboard.memory_warning') if MemInfo.new.mem_total and MemInfo.new.mem_total < 1_000_000
   end
 
+  def google_oauth2_config_check
+    I18n.t('dashboard.google_oauth2_config_warning') if SiteSetting.enable_google_oauth2_logins && (SiteSetting.google_oauth2_client_id.blank? || SiteSetting.google_oauth2_client_secret.blank?)
+  end
+
   def facebook_config_check
-    I18n.t('dashboard.facebook_config_warning') if SiteSetting.enable_facebook_logins and (SiteSetting.facebook_app_id.blank? or SiteSetting.facebook_app_secret.blank?)
+    I18n.t('dashboard.facebook_config_warning') if SiteSetting.enable_facebook_logins && (SiteSetting.facebook_app_id.blank? || SiteSetting.facebook_app_secret.blank?)
   end
 
   def twitter_config_check
@@ -117,7 +135,11 @@ class AdminDashboardData
   end
 
   def s3_config_check
-    I18n.t('dashboard.s3_config_warning') if SiteSetting.enable_s3_uploads and (SiteSetting.s3_access_key_id.blank? or SiteSetting.s3_secret_access_key.blank? or SiteSetting.s3_upload_bucket.blank?)
+    bad_keys = (SiteSetting.s3_access_key_id.blank? or SiteSetting.s3_secret_access_key.blank?) and !SiteSetting.s3_use_iam_profile
+
+    return I18n.t('dashboard.s3_config_warning') if SiteSetting.enable_s3_uploads and (bad_keys or SiteSetting.s3_upload_bucket.blank?)
+    return I18n.t('dashboard.s3_backup_config_warning') if SiteSetting.enable_s3_backups and (bad_keys or SiteSetting.s3_backup_bucket.blank?)
+    nil
   end
 
   def image_magick_check
@@ -147,41 +169,23 @@ class AdminDashboardData
   end
 
   def site_description_check
-    return I18n.t('dashboard.site_description_missing') if !SiteSetting.site_description.present?
+    I18n.t('dashboard.site_description_missing') if !SiteSetting.site_description.present?
   end
 
   def send_consumer_email_check
-    I18n.t('dashboard.consumer_email_warning') if Rails.env == 'production' and ActionMailer::Base.smtp_settings[:address] =~ /gmail\.com|live\.com|yahoo\.com/
+    I18n.t('dashboard.consumer_email_warning') if Rails.env.production? and ActionMailer::Base.smtp_settings[:address] =~ /gmail\.com|live\.com|yahoo\.com/
   end
 
   def site_contact_username_check
-    I18n.t('dashboard.site_contact_username_warning') if SiteSetting.site_contact_username.blank?
+    I18n.t('dashboard.site_contact_username_warning') if !SiteSetting.site_contact_username.present? || SiteSetting.site_contact_username == SiteSetting.defaults[:site_contact_username]
   end
 
   def notification_email_check
-    I18n.t('dashboard.notification_email_warning') if SiteSetting.notification_email.blank?
+    I18n.t('dashboard.notification_email_warning') if !SiteSetting.notification_email.present? || SiteSetting.notification_email == SiteSetting.defaults[:notification_email]
   end
 
   def ruby_version_check
     I18n.t('dashboard.ruby_version_warning') if RUBY_VERSION == '2.0.0' and RUBY_PATCHLEVEL < 247
   end
-
-
-  # TODO: generalize this method of putting i18n keys with expiry in redis
-  #       that should be reported on the admin dashboard:
-  def access_password_removal
-    if i18n_key = $redis.get(AdminDashboardData.access_password_removal_key)
-      I18n.t(i18n_key)
-    end
-  end
-  def self.report_access_password_removal
-    $redis.setex access_password_removal_key, 172_800, 'dashboard.access_password_removal'
-  end
-
-  private
-
-    def self.access_password_removal_key
-      'dash-data:access_password_removal'
-    end
 
 end

@@ -1,39 +1,56 @@
+require 'sanitize'
+
 class Search
 
   class GroupedSearchResults
-    attr_reader :topic_count, :type_filter
+    include ActiveModel::Serialization
 
-    def initialize(type_filter)
+    class TextHelper
+      extend ActionView::Helpers::TextHelper
+    end
+
+    attr_reader :type_filter,
+                :posts, :categories, :users,
+                :more_posts, :more_categories, :more_users,
+                :term, :search_context, :include_blurbs
+
+    def initialize(type_filter, term, search_context, include_blurbs, blurb_length)
       @type_filter = type_filter
-      @by_type = {}
-      @topic_count = 0
+      @term = term
+      @search_context = search_context
+      @include_blurbs = include_blurbs
+      @blurb_length = blurb_length || 200
+      @posts = []
+      @categories = []
+      @users = []
     end
 
-    def topic_ids
-      topic_results = @by_type[:topic]
-      return Set.new if topic_results.blank?
-      return topic_results.result_ids
+    def blurb(post)
+      GroupedSearchResults.blurb_for(post.cooked, @term, @blurb_length)
     end
 
-    def as_json
-      @by_type.values.map do |grouped_result|
-        grouped_result.as_json
-      end
-    end
+    def add(object)
+      type = object.class.to_s.downcase.pluralize
 
-    def add_result(result)
-      grouped_result = @by_type[result.type] || (@by_type[result.type] = SearchResultType.new(result.type))
-
-      # Limit our results if there is no filter
-      if @type_filter.present? or (grouped_result.size < Search.per_facet)
-        @topic_count += 1 if (result.type == :topic)
-
-        grouped_result.add(result)
+      if !@type_filter.present? && send(type).length == Search.per_facet
+        instance_variable_set("@more_#{type}".to_sym, true)
       else
-        grouped_result.more = true
+        (send type) << object
       end
     end
 
+
+    def self.blurb_for(cooked, term=nil, blurb_length=200)
+      cooked = SearchObserver::HtmlScrubber.scrub(cooked).squish
+
+      blurb = nil
+      if term
+        terms = term.split(/\s+/)
+        blurb = TextHelper.excerpt(cooked, terms.first, radius: blurb_length / 2, seperator: " ")
+      end
+      blurb = TextHelper.truncate(cooked, length: blurb_length, seperator: " ") if blurb.blank?
+      Sanitize.clean(blurb)
+    end
   end
 
 end

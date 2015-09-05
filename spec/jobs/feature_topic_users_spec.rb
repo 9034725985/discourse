@@ -5,11 +5,11 @@ require 'jobs/regular/process_post'
 describe Jobs::FeatureTopicUsers do
 
   it "raises an error without a topic_id" do
-    lambda { Jobs::FeatureTopicUsers.new.execute({}) }.should raise_error(Discourse::InvalidParameters)
+    expect { Jobs::FeatureTopicUsers.new.execute({}) }.to raise_error(Discourse::InvalidParameters)
   end
 
-  it "raises an error with a missing topic_id" do
-    lambda { Jobs::FeatureTopicUsers.new.execute(topic_id: 123) }.should raise_error(Discourse::InvalidParameters)
+  it "raises no error with a missing topic_id" do
+    Jobs::FeatureTopicUsers.new.execute(topic_id: 123)
   end
 
   context 'with a topic' do
@@ -22,22 +22,46 @@ describe Jobs::FeatureTopicUsers do
 
     it "won't feature the OP" do
       Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
-      topic.reload.featured_user_ids.include?(topic.user_id).should be_false
+      expect(topic.reload.featured_user_ids.include?(topic.user_id)).to eq(false)
     end
 
     it "features the second poster" do
       Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
-      topic.reload.featured_user_ids.include?(coding_horror.id).should be_true
-    end
-
-    it "will not feature the second poster if we supply their post to be ignored" do
-      Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id, except_post_id: second_post.id)
-      topic.reload.featured_user_ids.include?(coding_horror.id).should be_false
+      expect(topic.reload.featured_user_ids.include?(coding_horror.id)).to eq(true)
     end
 
     it "won't feature the last poster" do
       Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
-      topic.reload.featured_user_ids.include?(evil_trout.id).should be_false
+      expect(topic.reload.featured_user_ids.include?(evil_trout.id)).to eq(false)
+    end
+
+  end
+
+  context "participant count" do
+
+    let!(:post) { create_post }
+    let(:topic) { post.topic }
+
+
+    it "it works as expected" do
+
+      # It has 1 participant after creation
+      expect(topic.participant_count).to eq(1)
+
+      # It still has 1 after featuring
+      Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
+      expect(topic.reload.participant_count).to eq(1)
+
+      # If the OP makes another post, it's still 1.
+      create_post(topic: topic, user: post.user)
+      Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
+      expect(topic.reload.participant_count).to eq(1)
+
+      # If another users posts, it's 2.
+      create_post(topic: topic, user: Fabricate(:evil_trout))
+      Jobs::FeatureTopicUsers.new.execute(topic_id: topic.id)
+      expect(topic.reload.participant_count).to eq(2)
+
     end
 
   end

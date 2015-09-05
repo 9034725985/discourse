@@ -14,14 +14,15 @@ class UserAction < ActiveRecord::Base
   RESPONSE= 6
   MENTION = 7
   QUOTE = 9
-  STAR = 10
   EDIT = 11
   NEW_PRIVATE_MESSAGE = 12
   GOT_PRIVATE_MESSAGE = 13
+  PENDING = 14
 
   ORDER = Hash[*[
     GOT_PRIVATE_MESSAGE,
     NEW_PRIVATE_MESSAGE,
+    PENDING,
     NEW_TOPIC,
     REPLY,
     RESPONSE,
@@ -30,7 +31,6 @@ class UserAction < ActiveRecord::Base
     MENTION,
     QUOTE,
     BOOKMARK,
-    STAR,
     EDIT
   ].each_with_index.to_a.flatten]
 
@@ -39,8 +39,17 @@ class UserAction < ActiveRecord::Base
   #  having strings where you would expect bools
   class UserActionRow < OpenStruct
     include ActiveModel::SerializerSupport
+
+    def as_json(options = nil)
+      @table.as_json(options)
+    end
   end
 
+  def self.last_action_in_topic(user_id, topic_id)
+    UserAction.where(user_id: user_id,
+                     target_topic_id: topic_id,
+                     action_type: [RESPONSE, MENTION, QUOTE]).order('created_at DESC').pluck(:target_post_id).first
+  end
 
   def self.stats(user_id, guardian)
 
@@ -49,14 +58,13 @@ class UserAction < ActiveRecord::Base
 
     SELECT action_type, COUNT(*) count
     FROM user_actions a
-    JOIN topics t ON t.id = a.target_topic_id
+    LEFT JOIN topics t ON t.id = a.target_topic_id
     LEFT JOIN posts p on p.id = a.target_post_id
-    JOIN posts p2 on p2.topic_id = a.target_topic_id and p2.post_number = 1
+    LEFT JOIN posts p2 on p2.topic_id = a.target_topic_id and p2.post_number = 1
     LEFT JOIN categories c ON c.id = t.category_id
     /*where*/
     GROUP BY action_type
 SQL
-
 
     builder.where('a.user_id = :user_id', user_id: user_id)
 
@@ -68,49 +76,100 @@ SQL
     results
   end
 
+  def self.private_messages_stats(user_id, guardian)
+    return unless guardian.can_see_private_messages?(user_id)
+    # list the stats for: all/mine/unread (topic-based)
+    private_messages = Topic.where("topics.id IN (SELECT topic_id FROM topic_allowed_users WHERE user_id = #{user_id})")
+                            .joins("LEFT OUTER JOIN topic_users AS tu ON (topics.id = tu.topic_id AND tu.user_id = #{user_id})")
+                            .private_messages
+    all = private_messages.count
+    mine = private_messages.where(user_id: user_id).count
+    unread = private_messages.where("tu.last_read_post_number IS NULL OR tu.last_read_post_number < topics.highest_post_number").count
+    { all: all, mine: mine, unread: unread }
+  end
+
   def self.stream_item(action_id, guardian)
     stream(action_id: action_id, guardian: guardian).first
   end
 
-  def self.stream(opts={})
-    user_id = opts[:user_id]
+  def self.stream_queued(opts=nil)
+    opts ||= {}
+
     offset = opts[:offset] || 0
     limit = opts[:limit] || 60
-    action_id = opts[:action_id]
+
+    builder = SqlBuilder.new <<-SQL
+      SELECT
+        a.id,
+        t.title, a.action_type, a.created_at, t.id topic_id,
+        u.username, u.name, u.id AS user_id,
+        qp.raw,
+        t.category_id
+      FROM user_actions as a
+      JOIN queued_posts AS qp ON qp.id = a.queued_post_id
+      LEFT OUTER JOIN topics t on t.id = qp.topic_id
+      JOIN users u on u.id = a.user_id
+      LEFT JOIN categories c on c.id = t.category_id
+      /*where*/
+      /*order_by*/
+      /*offset*/
+      /*limit*/
+    SQL
+
+    builder
+      .where('a.user_id = :user_id', user_id: opts[:user_id].to_i)
+      .where('action_type = :pending', pending: UserAction::PENDING)
+      .order_by("a.created_at desc")
+      .offset(offset.to_i)
+      .limit(limit.to_i)
+      .map_exec(UserActionRow)
+  end
+
+  def self.stream(opts=nil)
+    opts ||= {}
+
     action_types = opts[:action_types]
+    user_id = opts[:user_id]
+    action_id = opts[:action_id]
     guardian = opts[:guardian]
     ignore_private_messages = opts[:ignore_private_messages]
+    offset = opts[:offset] || 0
+    limit = opts[:limit] || 60
 
     # The weird thing is that target_post_id can be null, so it makes everything
     #  ever so more complex. Should we allow this, not sure.
-
-    builder = SqlBuilder.new("
-SELECT
-  t.title, a.action_type, a.created_at, t.id topic_id,
-  a.user_id AS target_user_id, au.name AS target_name, au.username AS target_username,
-  coalesce(p.post_number, 1) post_number,
-  p.reply_to_post_number,
-  pu.email, pu.username, pu.name, pu.id user_id,
-  pu.use_uploaded_avatar, pu.uploaded_avatar_template, pu.uploaded_avatar_id,
-  u.email acting_email, u.username acting_username, u.name acting_name, u.id acting_user_id,
-  u.use_uploaded_avatar acting_use_uploaded_avatar, u.uploaded_avatar_template acting_uploaded_avatar_template, u.uploaded_avatar_id acting_uploaded_avatar_id,
-  coalesce(p.cooked, p2.cooked) cooked,
-  CASE WHEN coalesce(p.deleted_at, p2.deleted_at, t.deleted_at) IS NULL THEN false ELSE true END deleted,
-  p.hidden,
-  p.post_type
-FROM user_actions as a
-JOIN topics t on t.id = a.target_topic_id
-LEFT JOIN posts p on p.id = a.target_post_id
-JOIN posts p2 on p2.topic_id = a.target_topic_id and p2.post_number = 1
-JOIN users u on u.id = a.acting_user_id
-JOIN users pu on pu.id = COALESCE(p.user_id, t.user_id)
-JOIN users au on au.id = a.user_id
-LEFT JOIN categories c on c.id = t.category_id
-/*where*/
-/*order_by*/
-/*offset*/
-/*limit*/
-")
+    builder = SqlBuilder.new <<-SQL
+      SELECT
+        a.id,
+        t.title, a.action_type, a.created_at, t.id topic_id,
+        t.closed AS topic_closed, t.archived AS topic_archived,
+        a.user_id AS target_user_id, au.name AS target_name, au.username AS target_username,
+        coalesce(p.post_number, 1) post_number, p.id as post_id,
+        p.reply_to_post_number,
+        pu.username, pu.name, pu.id user_id,
+        pu.uploaded_avatar_id,
+        u.username acting_username, u.name acting_name, u.id acting_user_id,
+        u.uploaded_avatar_id acting_uploaded_avatar_id,
+        coalesce(p.cooked, p2.cooked) cooked,
+        CASE WHEN coalesce(p.deleted_at, p2.deleted_at, t.deleted_at) IS NULL THEN false ELSE true END deleted,
+        p.hidden,
+        p.post_type,
+        p.action_code,
+        p.edit_reason,
+        t.category_id
+      FROM user_actions as a
+      JOIN topics t on t.id = a.target_topic_id
+      LEFT JOIN posts p on p.id = a.target_post_id
+      JOIN posts p2 on p2.topic_id = a.target_topic_id and p2.post_number = 1
+      JOIN users u on u.id = a.acting_user_id
+      JOIN users pu on pu.id = COALESCE(p.user_id, t.user_id)
+      JOIN users au on au.id = a.user_id
+      LEFT JOIN categories c on c.id = t.category_id
+      /*where*/
+      /*order_by*/
+      /*offset*/
+      /*limit*/
+    SQL
 
     apply_common_filters(builder, user_id, guardian, ignore_private_messages)
 
@@ -129,15 +188,23 @@ LEFT JOIN categories c on c.id = t.category_id
   end
 
   def self.log_action!(hash)
-    required_parameters = [:action_type, :user_id, :acting_user_id, :target_topic_id, :target_post_id]
+    required_parameters = [:action_type, :user_id, :acting_user_id]
+
+    if hash[:action_type] == UserAction::PENDING
+      required_parameters << :queued_post_id
+    else
+      required_parameters << :target_post_id
+      required_parameters << :target_topic_id
+    end
+
     require_parameters(hash, *required_parameters)
+
     transaction(requires_new: true) do
       begin
-
         # TODO there are conditions when this is called and user_id was already rolled back and is invalid.
 
         # protect against dupes, for some reason this is failing in some cases
-        action = self.where(hash.select{|k,v| required_parameters.include?(k)}).first
+        action = self.find_by(hash.select { |k, _| required_parameters.include?(k) })
         return action if action
 
         action = self.new(hash)
@@ -150,7 +217,7 @@ LEFT JOIN categories c on c.id = t.category_id
         user_id = hash[:user_id]
         update_like_count(user_id, hash[:action_type], 1)
 
-        topic = Topic.includes(:category).where(id: hash[:target_topic_id]).first
+        topic = Topic.includes(:category).find_by(id: hash[:target_topic_id])
 
         # move into Topic perhaps
         group_ids = nil
@@ -159,10 +226,7 @@ LEFT JOIN categories c on c.id = t.category_id
         end
 
         if action.user
-          MessageBus.publish("/users/#{action.user.username.downcase}",
-                                action.id,
-                                user_ids: [user_id],
-                                group_ids: group_ids )
+          MessageBus.publish("/users/#{action.user.username.downcase}", action.id, user_ids: [user_id], group_ids: group_ids)
         end
 
         action
@@ -176,7 +240,7 @@ LEFT JOIN categories c on c.id = t.category_id
 
   def self.remove_action!(hash)
     require_parameters(hash, :action_type, :user_id, :acting_user_id, :target_topic_id, :target_post_id)
-    if action = UserAction.where(hash.except(:created_at)).first
+    if action = UserAction.find_by(hash.except(:created_at))
       action.destroy
       MessageBus.publish("/user/#{hash[:user_id]}", {user_action_id: action.id, remove: true})
     end
@@ -219,38 +283,9 @@ SQL
     builder.exec
   end
 
-  def self.synchronize_favorites
-    exec_sql("
-    DELETE FROM user_actions ua
-    WHERE action_type = :star
-      AND NOT EXISTS (
-        SELECT 1 FROM topic_users tu
-        WHERE
-              tu.user_id = ua.user_id AND
-              tu.topic_id = ua.target_topic_id AND
-              starred
-      )", star: UserAction::STAR)
-
-    exec_sql("INSERT INTO user_actions
-             (action_type, user_id, target_topic_id, target_post_id, acting_user_id, created_at, updated_at)
-             SELECT :star, tu.user_id, tu.topic_id, -1, tu.user_id, tu.starred_at, tu.starred_at
-             FROM topic_users tu
-             WHERE starred AND NOT EXISTS(
-              SELECT 1 FROM user_actions ua
-              WHERE tu.user_id = ua.user_id AND
-                    tu.topic_id = ua.target_topic_id AND
-                    ua.action_type = :star
-             )
-             ", star: UserAction::STAR)
-
-  end
-
   def self.ensure_consistency!
     self.synchronize_target_topic_ids
-    self.synchronize_favorites
   end
-
-  protected
 
   def self.update_like_count(user_id, action_type, delta)
     if action_type == LIKE
@@ -262,19 +297,32 @@ SQL
 
   def self.apply_common_filters(builder,user_id,guardian,ignore_private_messages=false)
 
+    # We never return deleted topics in activity
+    builder.where("t.deleted_at is null")
+
+    # We will return deleted posts though if the user can see it
     unless guardian.can_see_deleted_posts?
-      builder.where("p.deleted_at is null and p2.deleted_at is null and t.deleted_at is null")
+      builder.where("p.deleted_at is null and p2.deleted_at is null")
+
+      current_user_id = -2
+      current_user_id = guardian.user.id if guardian.user
+      builder.where("NOT COALESCE(p.hidden, false) OR p.user_id = :current_user_id", current_user_id: current_user_id )
     end
 
     unless (guardian.user && guardian.user.id == user_id) || guardian.is_staff?
-      builder.where("a.action_type not in (#{BOOKMARK},#{STAR})")
+      builder.where("a.action_type not in (#{BOOKMARK})")
+      builder.where("t.visible")
+    end
+
+    unless guardian.can_see_notifications?(User.where(id: user_id).first)
+      builder.where('a.action_type <> :pending', pending: UserAction::PENDING)
     end
 
     if !guardian.can_see_private_messages?(user_id) || ignore_private_messages
       builder.where("t.archetype != :archetype", archetype: Archetype::private_message)
     end
 
-    unless guardian.is_staff?
+    unless guardian.is_admin?
       allowed = guardian.secure_category_ids
       if allowed.present?
         builder.where("( c.read_restricted IS NULL OR
@@ -309,8 +357,7 @@ end
 #
 # Indexes
 #
-#  idx_unique_rows                           (action_type,user_id,target_topic_id,target_post_id,acting_user_id) UNIQUE
-#  index_actions_on_acting_user_id           (acting_user_id)
-#  index_actions_on_user_id_and_action_type  (user_id,action_type)
+#  idx_unique_rows                                (action_type,user_id,target_topic_id,target_post_id,acting_user_id) UNIQUE
+#  index_user_actions_on_acting_user_id           (acting_user_id)
+#  index_user_actions_on_user_id_and_action_type  (user_id,action_type)
 #
-

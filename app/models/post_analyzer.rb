@@ -1,3 +1,5 @@
+require_dependency 'oneboxer'
+
 class PostAnalyzer
 
   def initialize(raw, topic_id)
@@ -9,18 +11,9 @@ class PostAnalyzer
   def cook(*args)
     cooked = PrettyText.cook(*args)
 
-    # cook all oneboxes, in the past we used to defer this
-    #  for some reason we decided to do this inline now
-    # TODO: discuss on http://meta.discourse.org what the correct thing is to do
-    #  keep in mind some oneboxes may take a long time to build
-    result = Oneboxer.apply(cooked) do |url, elem|
+    result = Oneboxer.apply(cooked) do |url, _|
       Oneboxer.invalidate(url) if args.last[:invalidate_oneboxes]
-      begin
-        Oneboxer.onebox url
-      rescue => e
-        Rails.logger.warn("Failed to cook onebox: #{e.message} #{e.backtrace}")
-        nil
-      end
+      Oneboxer.cached_onebox url
     end
 
     cooked = result.to_html if result.changed?
@@ -52,14 +45,21 @@ class PostAnalyzer
     return [] if @raw.blank?
     return @raw_mentions if @raw_mentions.present?
 
-    # strip quotes and code blocks
+    # strip quotes, code blocks and oneboxes
     cooked_stripped = cooked_document
-    cooked_stripped.search("aside.quote").remove
-    cooked_stripped.search("pre").remove
-    cooked_stripped.search("code").remove
+    cooked_stripped.css("aside.quote").remove
+    cooked_stripped.css("pre").remove
+    cooked_stripped.css("code").remove
+    cooked_stripped.css(".onebox").remove
 
     results = cooked_stripped.to_html.scan(PrettyText.mention_matcher)
     @raw_mentions = results.uniq.map { |un| un.first.downcase.gsub!(/^@/, '') }
+  end
+
+  # from rack ... compat with ruby 2.2
+  def self.parse_uri_rfc2396(uri)
+    @parser ||= defined?(URI::RFC2396_Parser) ? URI::RFC2396_Parser.new : URI
+    @parser.parse(uri)
   end
 
   # Count how many hosts are linked in the post
@@ -71,9 +71,9 @@ class PostAnalyzer
 
     raw_links.each do |u|
       begin
-        uri = URI.parse(u)
+        uri = self.class.parse_uri_rfc2396(u)
         host = uri.host
-        @linked_hosts[host] ||= 1
+        @linked_hosts[host] ||= 1 unless host.nil?
       rescue URI::InvalidURIError
         # An invalid URI does not count as a raw link.
         next
@@ -88,10 +88,10 @@ class PostAnalyzer
     return [] unless @raw.present?
     return @raw_links if @raw_links.present?
 
-    # Don't include @mentions in the link count
     @raw_links = []
 
     cooked_document.search("a").each do |l|
+      # Don't include @mentions in the link count
       next if l.attributes['href'].nil? || link_is_a_mention?(l)
       url = l.attributes['href'].to_s
       @raw_links << url

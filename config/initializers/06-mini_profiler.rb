@@ -1,7 +1,14 @@
 # If Mini Profiler is included via gem
-if Rails.configuration.respond_to?(:enable_mini_profiler) && Rails.configuration.enable_mini_profiler
+if Rails.configuration.respond_to?(:load_mini_profiler) && Rails.configuration.load_mini_profiler
   require 'rack-mini-profiler'
   require 'flamegraph'
+
+  begin
+    require 'memory_profiler' if RUBY_VERSION >= "2.1.0"
+  rescue => e
+     STDERR.put "#{e} failed to require mini profiler"
+  end
+
   # initialization is skipped so trigger it
   Rack::MiniProfilerRails.initialize!(Rails.application)
 end
@@ -14,15 +21,32 @@ if defined?(Rack::MiniProfiler)
   # namespacing gets complex, cause mini profiler is in the rack chain way before multisite
   Rack::MiniProfiler.config.storage_instance = Rack::MiniProfiler::RedisStore.new(connection:  DiscourseRedis.raw_connection)
 
+  skip = [
+    /^\/message-bus/,
+    /topics\/timings/,
+    /assets/,
+    /\/user_avatar\//,
+    /\/letter_avatar\//,
+    /\/highlight-js\//,
+    /qunit/,
+    /srv\/status/,
+    /commits-widget/,
+    /^\/cdn_asset/,
+    /^\/logs/,
+    /^\/site_customizations/,
+    /^\/uploads/,
+    /^\/javascripts\//,
+    /^\/images\//,
+    /^\/stylesheets\//,
+    /^\/favicon\/proxied/
+  ]
+
   # For our app, let's just show mini profiler always, polling is chatty so nuke that
   Rack::MiniProfiler.config.pre_authorize_cb = lambda do |env|
+    path = env['PATH_INFO']
+
     (env['HTTP_USER_AGENT'] !~ /iPad|iPhone|Nexus 7|Android/) &&
-    (env['PATH_INFO'] !~ /^\/message-bus/) &&
-    (env['PATH_INFO'] !~ /topics\/timings/) &&
-    (env['PATH_INFO'] !~ /assets/) &&
-    (env['PATH_INFO'] !~ /qunit/) &&
-    (env['PATH_INFO'] !~ /srv\/status/) &&
-    (env['PATH_INFO'] !~ /commits-widget/)
+    !skip.any?{|re| re =~ path}
   end
 
   # without a user provider our results will use the ip address for namespacing
@@ -69,4 +93,14 @@ if defined?(Rack::MiniProfiler)
   # ActiveSupport::Notifications.subscribe(/.*/, inst)
 
   # Rack::MiniProfiler.profile_method ActionView::PathResolver, 'find_templates'
+end
+
+
+if ENV["PRINT_EXCEPTIONS"]
+  trace      = TracePoint.new(:raise) do |tp|
+    puts tp.raised_exception
+    puts tp.raised_exception.backtrace.join("\n")
+    puts
+  end
+  trace.enable
 end

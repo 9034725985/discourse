@@ -1,24 +1,23 @@
-@import "common/foundation/variables";
+.gap {
+  /* may not need this */
+}
 
-.topic-post {
-  border-top: 1px solid #ddd;
-  padding: 6px 0 3px 0;
-  &:first-of-type {
-    border-top: none;
+.time-gap {
+  border-bottom: 1px solid dark-light-diff($primary, $secondary, 90%, -60%);
+  color: lighten($primary, 50%);
+  padding-bottom: 3px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  font-weight: bold;
+  .topic-avatar {
+    margin: 0 5px 0 10px;
   }
 }
 
-nav.post-controls {
-  background-color: #fff;
-  padding: 0px;
-  border-right: 1px solid #ddd;
-  margin-top: 10px;
-  button {color: #aaa;
-  border-radius: 4px;
-  margin-right: 2px;
-
+.topic-post {
+  border-top: 1px solid dark-light-diff($primary, $secondary, 90%, -60%);
+  padding: 6px 0 3px 0;
 }
-
 
 span.badge-posts {
   margin-right: 5px;
@@ -26,137 +25,177 @@ span.badge-posts {
 
 .show-replies {
   display: none;
-  i {
-    margin-left: 5px;
+}
+
+nav.post-controls {
+  clear: both;
+}
+
+.who-liked {
+  margin-left: 10px;
+}
+
+button.like-count {
+  font-size: 1em;
+  padding: 8px 4px;
+}
+
+button {
+  border: none;
+  font-size: 1.214em;
+  padding: 8px 10px;
+  vertical-align: top;
+  background: transparent;
+  color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
+  float: left;
+  &.hidden {
+    display: none;
+  }
+  &.admin {
+    position: relative;
+  }
+  &.expand-post {
+    margin:10px 0 10px 0;
+  }
+  &.has-like {color: $love;}
+  .read-icon {
+    &:before {
+      font-family: "FontAwesome";
+      content: "\f02e";
+    }
+    &.unseen {
+      &:before {
+        content: "\f097";
+      }
+    }
+    &.bookmarked {
+      &:before {
+        color: $tertiary;
+      }
+    }
   }
 }
 
 
-
-button.create {
-  float: right !important;
-  border: 1px solid #888;
-  margin-right: 0;
-  color: #888;
-  padding-right: 7px;
-}
- 	.like {
-    border-right: 1px solid #ddd;
-}
-
-.create i {
-  margin-right: 5px;
+/* shift post reply button to the right and make it black */
+.post-controls button.create {
+  float: right;
+  color: $primary;
 }
 
 
-button {
-	border: none;
-  font-size: 16px;
-  padding: 8px 10px;
-  vertical-align: top;
-  background: transparent;
- 	border: 1px solid #ddd;
-  float: left !important;
-    &:last-of-type {
-      border-right: 1px solid #ddd;
+.post-admin-menu {
+  background-color: $secondary;
+  width: 205px;
+  padding: 10px;
+  border: 1px solid dark-light-diff($primary, $secondary, 90%, -60%);
+  position: absolute;
+  text-align: left;
+  bottom: 0;
+  left: 135px;
+  z-index: 1000;
+  display: none;
+
+  h3 {
+    margin-top: 0;
+    color: $primary;
+    font-size: 1em;
+  }
+
+  ul {
+    list-style: none;
+    margin: 10px 0 0 0;
+  }
+
+  li {
+    width: 176px;
+    margin-bottom: 5px;
+
+    i.fa {
+      width: 14px;
+      margin-right: 14px;
     }
-       &:hover {
-        }
-        &:active {
-        }
-        &.hidden {
-          display: none;
-        }
-        &.like, &.edit, &.flag, &.delete, &.share, &.bookmark, &.create {
-          float: right;
-        }
-        .read-icon {
-          &:before {
-            font-family: "FontAwesome";
-            content: "\f02e";
-          }
-          &.unseen {
-            &:before {
-              content: "\f097";
-            }
-          }
-          &.last-read {
-            color: $red;
-          }
-          &.bookmarked {
-            &:before {
-              color: $bookmarkColor;
-            }
-          }
-        }
-      }
-    }
-
+  }
+}
 
 
 .embedded-posts {
-
   .topic-meta-data h5 a {
     margin-left: 10px;
   }
 }
-
 
 .reply-new {
   display: none;
 }
 
 .post-actions {
-  margin-left: 10px;
-  margin-top: 2px;
+  display: inline-block;
+  width: 100%;
+}
+
+.post-action {
+  float: right;
+  margin-right: 10px;
+  clear: right;
+}
+
+.post-action .relative-date {
+  margin-left: 5px;
 }
 
 a.reply-to-tab {
-  display: none;
+  position: absolute;
+  z-index: 400;
+  right: 80px;
+  color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
+  span { display: none; }
 }
 
 a.star {
   display: inline-block;
   float: left;
-  font-size: 1.4em !important;
-  margin-top: 3px;
+  font-size: 1.3em;
 }
 
-#main a.star.starred {
-	text-shadow: none !important;
+.topic-post .boxed .contents {
+  float: none;
+  padding-top: 5px;
+  clear: both;
+  position: relative;
 }
 
-.topic-summary {
+.topic-map {
 
-  .btn {
-    border-radius: 0 4px 0 4px;
+  margin: 10px 0;
+  background: blend-primary-secondary(5%);
+  border: 1px solid dark-light-diff($primary, $secondary, 90%, -65%);
+  border-top: none; // would cause double top border
+
+  section {
+    border-top: 1px solid dark-light-diff($primary, $secondary, 90%, -65%);
   }
-
-  .topic-links li {
-    word-wrap: break-word;
-  }
-
-  border-radius: 5px;
-  margin: 15px 10px 20px 10px;
-  border: 1px solid #ddd;
 
   h3 {
     margin-bottom: 4px;
-    color: #323232;
+    margin-top: 0;
+    color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
     line-height: 23px;
+    font-weight: normal;
+    font-size: 1em;
   }
 
   h4 {
     margin: 0 0 3px 0;
-    color: #6c7376;
+    color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
     font-weight: normal;
-    font-size: 12px;
+    font-size: 0.857em;
     line-height: 15px;
   }
 
-  p,
-  .participants {
-    margin: 0 0 7px;
+  .user {
+    float: left;
+    margin-right: 10px;
   }
 
   ul {
@@ -172,13 +211,14 @@ a.star {
     }
     .post-count {
       position: absolute;
-      top: 2px;
-      right: 6px;
-      padding: 0 4px;
+      right: 3px;
+      border-radius: 100px;
+      padding: 4px 5px 2px 5px;
+      text-align: center;
       font-weight: normal;
       font-size: 11px;
-      line-height: 14px;
-          }
+      line-height: 1;
+    }
   }
 
   .avatar {
@@ -186,64 +226,73 @@ a.star {
     margin-right: 4px;
   }
 
-  .summary {
-    &.collapsed {
+  .map-collapsed {
+    .secondary {
+      display: none;
     }
+  }
+
+  .map {
     li {
       float: left;
-      padding: 7px 11px;
+      padding: 7px 8px;
       &:last-of-type {
         border-right: 0;
       }
     }
-    a,
-
-    .number {
-      font-weight: bold;
+    a, .number {
       line-height: 20px;
     }
-    .number {
-      color: #445a62;
+    .number, i {
+      color: dark-light-choose(scale-color($primary, $lightness: 20%), scale-color($secondary, $lightness: 80%));
+      font-size: 110%;
     }
+
     .avatar + a {
       float: left;
     }
   }
-  .avatars,
-  .links,
-  .information {
-    padding: 7px 14px;
-    color: #000;
+  li.avatars {
+    display: none;
   }
 
-  .information {
-    border-top: 1px solid #d1d1d2;
+  .links, .information, .avatars {
+    padding: 7px 10px;
+    color: $primary;
+    overflow: auto;
   }
+
+  .participants { // PMs //
+    .user {float: left; margin: 0 10px 10px 0;}
+  }
+
+  .domain {
+    color: dark-light-choose(scale-color($primary, $lightness: 75%), scale-color($secondary, $lightness: 25%));
+  }
+
   .topic-links {
     .badge-notification {
-      margin: 0 0 4px;
+      margin: 1px 5px 2px 0;
     }
   }
+
+  td {
+    vertical-align: top;
+    padding:1px;
+  }
+
   .buttons {
     float: right;
     .btn {
       border: 0;
-      border-bottom: 1px solid #ddd;
-      border-left: 1px solid #e6e6e6;
-      padding: 0 23px;
-      color: #444;
-      background: #ddd;
-      &:hover {
-        background: #ccc;
-        color: #444;
-        border-bottom: 1px solid #ccc;
-
-      }
-      &.collapsed {
-      }
-      .icon {
+      padding: 0 15px;
+      color: $primary;
+      background: blend-primary-secondary(5%);
+      border-left: 1px solid dark-light-diff($primary, $secondary, 90%, -65%);
+      border-top: 1px solid dark-light-diff($primary, $secondary, 90%, -65%);
+      .fa {
         margin: 0;
-        font-size: 18px;
+        font-size: 1.286em;
         line-height: 52px;
       }
     }
@@ -251,32 +300,36 @@ a.star {
 }
 
 #topic-footer-buttons {
-  border-top: 1px solid #ddd;
-  padding: 20px 10px 0 10px;
+  @include clearfix;
+  border-top: 1px solid dark-light-diff($primary, $secondary, 90%, -60%);
+  padding: 20px 0 0 0;
+  .fa-bookmark.bookmarked { color: $tertiary; }
+}
+
+/* this is to force the drop-down notification state description para below the button */
+#topic-footer-buttons p {
+  clear: both;
+  margin: 0;
 }
 
 #suggested-topics {
   clear: left;
-  padding: 20px 10px 15px 10px;
+  padding: 20px 0 15px 0;
     th.views, td.views, td.activity, th.activity, th.likes, td.likes {
     display: none;
     }
 
-   a.badge-category {
-    font-size: 10px;
+   a.badge-category, a.badge-category-parent {
+    font-size: 0.714em;
+    vertical-align: top;
     }
-
-   .title {
-    font-size: 14px; line-height: 8px;
-  }
-
 }
 
 
 
 span.post-count {
-  background: #000;
-  color: #fff;
+  background: $primary;
+  color: $secondary;
   opacity: .8;
 }
 
@@ -285,38 +338,19 @@ span.post-count {
   .btn {
     margin-bottom: 5px;
     margin-right: 10px;
-    .icon-star {margin-right: 5px;}
+    .fa-star {margin-right: 5px;}
   }
 }
 
 #topic-title {
   z-index: 1000;
-  background: #eee;
   margin: 0 0 0 0 !important;
-  padding: 15px 10px 15px 10px;
+  padding: 15px 0;
 }
 
 .topic-post {
-  article.boxed img {
-    max-width: 100%;
-    height: auto;
-  }
   &.moderator {
-    background-color: #eef0ff;
-  }
-}
-
-.quote-button {
-  display: none;
-  position: absolute;
-  background-color: #666;
-  color: #fff;
-  padding: 10px;
-  width: 90px;
-
-  &:hover {
-    background-color: #999;
-    cursor: pointer;
+    background-color: dark-light-diff($highlight, $secondary, 70%, -80%);
   }
 }
 
@@ -332,16 +366,17 @@ iframe {
   display: none;
 }
 
-.topic-meta-data {
-  margin-bottom: 10px;
-}
-
 .open>.dropdown-menu {
   display: block;
 }
 
 .dropdown-menu li  {
   margin: 5px 0;
+  .fa {
+    float: left;
+    margin-right: 5px;
+    padding-top: 1px;
+  }
 }
 
 .btn-group {
@@ -354,40 +389,42 @@ iframe {
   position: relative;
 }
 
-.contents .cooked a {
-  word-wrap: break-word;
-}
-
-.modal-body {
-  input[type=text] {
-    font-size: 16px;
-    display: block;
-    margin-top: 10px;
-  }
-}
-
-
 #share-link {
-  width: 265px;
-  margin-left: -4px;
-
-    h3 {
-      margin: 5px 0;
-    }
-
-    input[type=text] {
-      font-size: 16px;
-      width: 92%;
-      margin-bottom: 10px;
-    }
+  width: 290px;
+  left: auto;
+  right: 4px;
 }
 
 #selected-posts {
-  padding-left: 20px;
+  float: left;
+  width: 97%;
+  padding-left: 3%;
+  background-color: srgb-scale($tertiary, $secondary, 15%);
   .btn {
     margin-bottom: 10px;
+    color: $secondary;
+    background: $tertiary;
+    clear: both;
+  }
+  p {
+    clear: both;
   }
 }
+
+// hide the full set of selection buttons on mobile
+.select-posts button { display: none; }
+
+// unhide the simple "select just this post" button
+button.select-post {
+  display: inline-block;
+  position: absolute;
+  z-index: 401; // 400 is the reply-to tab
+  left: 200px;
+  background-color: srgb-scale($tertiary, $secondary, 60%);
+  color: $secondary;
+  padding: 5px;
+}
+
 
 .post-select {
   float: right;
@@ -395,91 +432,97 @@ iframe {
   margin-top: -20px;
 }
 
-.post-action .relative-date {
-  margin-left: 5px;
-}
+
 
 .deleted {
-  background-color: lighten(red, 45%);
+  background-color: dark-light-diff(rgba($danger,.7), $secondary, 50%, -60%);
 }
 
 #show-topic-admin {
-  color: #7b7b7b;
-  right: 0px;
+  color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
+  right: 0;
   border-right: 0;
   padding-right: 4px;
   padding-left: 5px;
-  border-radius: 4px 0 0 4px;
 }
 
 .deleted-user-avatar {
-  font-size: 36px;
-}
-
-.staff a {
-  border-radius: 4px;
-  padding: 4px;
-  margin: -4px 0 0 -4px;
-  background-color: lighten(yellow, 35%);
-}
-
-h3.new-user a[href] {
-  color: $dark_gray;
-}
-
-.topic-meta-data {
-  white-space: nowrap;
-  float: left;
-}
-
-.user-title {
-  color: #aaa;
-  padding-top: 2px;
-  padding-left: 8px;
-  overflow: hidden;
-  margin-right: 50px;
+  font-size: 2.571em;
 }
 
 span.btn-text {display: none;}
 
 blockquote {
   clear:both;
-  margin: 0;
-}
-
-.quote-controls {
-  float: right;
-  color: #323232;
-  a {
-  margin: 0;
-  }
-    .back:before,
-    .quote-other-topic:before {
-    display: inline-block;
-    margin-left: 8px;
-    color: #323232;
-    font-family: "FontAwesome";
-    position: relative;
-    z-index: 20;
-    }
-    .back:before {
-    content: "\f062";
-    }
-    .quote-other-topic:before {
-    content: "\f061";
-    }
-}
-
-
-.quote .title {
-  border-left: 5px solid #bebebe;
-  background-color: #f1f1f1;
-  padding: 10px 10px 0 12px;
-  clear: both;
-  .avatar { margin-right: 7px; }
+  /* leave browser defaults for top and bottom here */
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .gutter { display: none; }
 
-.posts-wrapper {  position: relative;
+.posts-wrapper {  position: relative; }
+
+span.highlighted {
+  background-color: dark-light-choose(scale-color($highlight, $lightness: 70%), $highlight);
+}
+
+.topic-avatar {
+  float: left;
+  position: relative;
+  z-index:999; /* must render on top of topic-body + topic-meta-data, otherwise not tappable */
+}
+
+.topic-meta-data {
+  white-space: nowrap;
+  position: absolute;
+  width: 100%;
+  left: 0px;
+  .names {
+    margin: 5px 0 0 5px;
+    line-height: 17px;
+    padding-left: 60px;
+    span {
+      display: block;
+    }
+  }
+  .post-info {
+    float: right;
+    font-size: 0.929em;
+    margin: 4px 10px 0 0;
+    .edits { margin-right: 5px; }
+  }
+}
+
+.username.new-user a {
+  color: dark-light-choose(scale-color($primary, $lightness: 70%), scale-color($secondary, $lightness: 30%));
+}
+
+.user-title {
+  color: #aaa;
+  padding-top: 2px;
+  overflow: hidden;
+  margin-right: 50px;
+}
+
+.read-state {
+  display: none;
+}
+
+.small-action .small-action-desc {
+  p {
+    padding-top: 0;
+  }
+  .custom-message {
+    margin-left: -40px;
+  }
+}
+
+.small-action .topic-avatar {
+  padding: 0;
+  margin: 0;
+}
+
+.small-action.time-gap .topic-avatar {
+  margin-top: -5px;
 }

@@ -28,17 +28,6 @@ def unbundled_require(gem)
   end
 end
 
-require 'optparse'
-begin
-  unbundled_require 'gabbler'
-rescue LoadError
-  puts "installing gabbler gem"
-  puts `gem install gabbler`
-  unbundled_require 'gabbler'
-end
-
-user_id = nil
-
 def sentence
   @gabbler ||= Gabbler.new.tap do |gabbler|
     story = File.read(File.dirname(__FILE__) + "/alice.txt")
@@ -60,12 +49,14 @@ def create_admin(seq)
     admin.password = "password"
     admin.save
     admin.grant_admin!
-    admin.change_trust_level!(:regular)
+    admin.change_trust_level!(TrustLevel[4])
     admin.email_tokens.update_all(confirmed: true)
   }
 end
 
 require File.expand_path(File.dirname(__FILE__) + "/../config/environment")
+
+SiteSetting.queue_jobs = false
 
 unless Rails.env == "profile"
   puts "This script should only be used in the profile environment"
@@ -76,6 +67,15 @@ end
 if User.count > 1
   puts "Only run this script against an empty DB"
   exit
+end
+
+require 'optparse'
+begin
+  unbundled_require 'gabbler'
+rescue LoadError
+  puts "installing gabbler gem"
+  puts `gem install gabbler`
+  unbundled_require 'gabbler'
 end
 
 puts "Creating 100 users"
@@ -95,9 +95,10 @@ puts
 puts "Creating 100 topics"
 
 topic_ids = 100.times.map do
-  topic = PostCreator.create(users.sample, raw: sentence, title: sentence[0..50].strip, category:  categories.sample.name, skip_validations: true)
+  post = PostCreator.create(users.sample, raw: sentence, title: sentence[0..50].strip, category:  categories.sample.name, skip_validations: true)
+
   putc "."
-  topic.id
+  post.topic_id
 end
 
 puts
@@ -106,3 +107,8 @@ puts "creating 2000 replies"
   putc "."
   PostCreator.create(users.sample, raw: sentence, topic_id: topic_ids.sample, skip_validations: true)
 end
+
+# no sidekiq so update some stuff
+Category.update_stats
+Jobs::PeriodicalUpdates.new.execute(nil)
+

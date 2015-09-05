@@ -1,6 +1,3 @@
-@import "../common/foundation/variables";
-@import "../common/foundation/mixins";
-
 // --------------------------------------------------
 // Topic lists
 // --------------------------------------------------
@@ -9,7 +6,10 @@
 // --------------------------------------------------
 
 .list-controls {
-  margin: 5px;
+  .category-breadcrumb.hidden {
+    display: none;
+  }
+  margin: 5px 0;
   .nav {
     float: left;
     margin-right: 15px;
@@ -20,19 +20,37 @@
   .btn {
     float: right;
     margin-left: 8px;
+    margin-top: 5px;
   }
-}
+  .nav-pills {
+    position: relative;
+  }
+  .nav-pills .drop {
+    border: 1px solid dark-light-diff($primary, $secondary, 90%, -65%);
+    position: absolute;
+    z-index: 1000;
+    background-color: $secondary;
+    padding: 0 10px 10px 10px;
+    width: 150px;
+    top: 100%;
+    margin: 0;
+    li {
+      list-style-type: none;
+      margin-left: 0;
+      margin-top: 5px;
+      padding-top: 10px;
+      a {
+        width: 100%;
+        display: inline-block;
+      }
+    }
 
-#category-filter {
-  .has-icon span:before {
-    margin-right: 4px;
-    font: 15px/0.9 "FontAwesome";
   }
-  .has-icon .favorited:before {
-    content: "\f005";
-  }
-  .has-icon .unread:before {
-    content: "\f02e";
+  .nav-pills > li {
+    background: dark-light-diff($primary, $secondary, 90%, -65%);
+    i.fa-caret-down {
+      margin-left: 8px;
+    }
   }
 }
 
@@ -43,118 +61,49 @@
 // Base list
 // --------------------------------------------------
 
-#topic-list {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border-top: 1px solid #ddd;
-  border-bottom: 1px solid #ddd;
+.topic-list {
 
-  tbody tr {
-    background-color: $white;
-    &:nth-child(even) {
-      background-color: darken($white, 4%);
-    }
-    &.archived a {
-      opacity: 0.6;
-    }
-    &.category-description {
-      td {
-        color: #000;
-      }
-    }
+  > tbody > tr {
     &.highlighted {
-      background-color: $highlight;
+      background-color: dark-light-choose(scale-color($tertiary, $lightness: 85%), scale-color($tertiary, $lightness: -55%));
     }
   }
+
   th,
   td {
-    padding: 7px 5px;
-    line-height: 1.25;
-    text-align: left;
-    vertical-align: middle;
-    &:first-of-type {
-      padding-left: 5px;
-    }
-    &:last-of-type {
-      padding-right: 5px;
-    }
-  }
-  th {
-    color: $topic-list-th-color;
-    font-weight: bold;
-    font-size: 13px;
-    &:first-of-type {
-      @include border-radius-all(4px 0 0 0);
-    }
-    &:last-of-type {
-      @include border-radius-all(0 4px 0 0);
-    }
-  }
-  td {
-    color: $topic-list-td-color;
-    font-size: 14px;
-  }
-  .main-link {
-    font-size: 16px;
-
-    i.score {
-      color: green;
-      cursor: pointer;
-    }
+    padding: 7px 0;
+    color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
   }
 
-  .topic-excerpt {
-    font-size: 14px;
-    margin-top: 8px;
-    color: $dark_gray;
-  }
+  a.title {color: $primary;}
 
-  .rank-details {
-    background-color: #eee;
-    padding: 6px;
-    margin-bottom: 5px;
-
-    p {
-      font-size: 12px;
-      margin: 0;
-      line-height: 14px;
-    }
-  }
-
-  .topic-statuses:empty {
-    display: none;
-  }
-  .topic-status {
-    margin-right: 4px;
-    padding: 0;
-    &:last-of-type {
-      margin-right: 0;
-    }
-  }
   .badge-notification {
     position: relative;
     top: -1px;
+      i {color: $secondary;}
   }
 
   .topic-item-stats {
     margin-top: 8px;
-  }
-
-  .topic-item-stats {
     .category, .num, .last-poster {
       float: left;
-      margin-right: 8px;
     }
-    .posts {
-      font-weight: bold;
+    .category a {
+      max-width: 160px;
+    }
+    .num .fa {
+      color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
     }
   }
 
-  .num {
-    text-align: center;
-    a:not(.badge-posts) {
-      color: inherit;
+  .num.posts {
+    font-weight: bold;
+  }
+
+  .age {
+    white-space: nowrap;
+    a {
+      padding: 15px 10px 15px 5px;
     }
   }
 }
@@ -162,32 +111,104 @@
 // Category list
 // --------------------------------------------------
 
-.category-list-item {
-  margin-bottom: 10px;
-  #topic-list tbody tr:nth-child(even) {
-    background-color: $white;
+tr.category-topic-link {
+  border-top: darken($secondary, 3%) 1px solid;
+  border-bottom: darken($secondary, 3%) 1px solid;
+}
+
+.topic-list.categories {
+  td.latest {
+    vertical-align: top;
+    padding: 5px;
   }
+
   .badge-category {
-    float: left;
-    margin: 1px 4px 0 0;
+    display: inline-block;
+    margin-top: 1px;
   }
+  .featured-users {
+    @include mobile-portrait  {
+      margin-bottom: 10px;
+      padding-top: 8px;
+      clear: left;
+    }
+    @include not-mobile-portrait  {
+      float: right;
+    }
+  }
+  .latest {
+    @include mobile-portrait { width: 150px; }
+    @include mobile-landscape { width: 270px; }
+    @include tablet-landscape { width: 450px; }
+    .featured-topic {
+      margin: 8px 0;
+      a.last-posted-at, a.last-posted-at:visited {
+        color: dark-light-choose(scale-color($primary, $lightness: 50%), scale-color($secondary, $lightness: 50%));
+      }
+    }
+  }
+  .stats {
+    @include not-tablet-landscape { display: none; }
+    @include tablet-landscape { min-width: 80px; }
+  }
+}
+
+.category-list-item {
+
+  border-left: 6px solid;
+
+  h3 {
+    display: inline-block;
+    font-size: 1.286em;
+    margin: 10px 0 0 5px;
+    i {
+      margin-right: 5px;
+    }
+    a[href] {
+      color: $primary;
+    }
+  }
+
+  .category-topic-link .main-link, .subcategories-list td, .category-description td {
+    padding-left: 10px;
+  }
+
+  .category-description td {
+    padding-top: 0;
+    padding-bottom: 15px;
+  }
+
+  .subcategories-list td {
+    padding-top: 15px;
+  }
+
+  .topic-list > tbody > tr {
+    &:nth-child(odd) {
+      background-color: $secondary;
+    }
+    &:nth-child(even) {
+      background-color: $secondary;
+    }
+  }
+
+  th .badge-category {
+    margin: 0;
+    font-size: 110%;
+  }
+
+
   .posters {
     float: left;
-    display: none;
   }
   > footer {
-    border-bottom: 1px solid $topic-list-border-color;
     border-top: 0;
     padding: 7px 10px;
-    background-color: lighten($topic-list-th-background-color, 2%);
-    @include box-shadow(0 1px 3px rgba($black, 0.22));
     figure {
       float: left;
       margin: 3px 7px 0 0;
-      color: lighten($topic-list-th-color, 5%);
+      color: dark-light-choose(scale-color($primary, $lightness: 10%), scale-color($secondary, $lightness: 90%));
       font-weight: bold;
-      font-size: 12px;
-      text-shadow: 0 1px 0 $white;
+      font-size: 0.857em;
     }
     figcaption {
       display: inline;
@@ -200,105 +221,20 @@
   }
 }
 
-// Loading
-// --------------------------------------------------
 
-// List
-
-.loading #topic-list {
-  border: 0;
-  @include box-shadow(none);
-  tr {
-    background-color: transparent;
-  }
+.topic-list-bottom {
+  margin: 20px 0 0 0;
 }
 
-// Topics
-
-#topic-list-bottom {
-  margin: 20px 12px 0 12px;
-}
-
-.topics-loading {
-  width: 200px;
-  margin: 0 auto;
-  padding: 10px 0 10px 43px;
-  color: $white;
-  font-size: 18px;
-  line-height: 25px;
-  background: {
-    color: $black;
-    image: image-url("spinner_96_w.gif");
-    repeat: no-repeat;
-    position: 10px 50%;
-    size: 25px;
-  };
-  @include border-radius-all(12px);
-}
 
 // Misc. stuff
 // --------------------------------------------------
 
 .list-controls {
-  .home {
-    color: #333;
-    background-color: #eee;
-  }
-
-  .badge-category {
-    margin-top: 6px;
-    padding: 4px 10px;
-    display: inline-block;
-    line-height: 24px;
-    float: left;
-  }
   .category-dropdown-button {
-    padding: 4px 10px 3px 8px;
-    border-left: 1px solid rgba(0, 0, 0, 0.15);
-    font-size: 16px;
-    width: 10px;
-    text-align: center;
-
-    &:hover {
-      opacity: 0.8;
-    }
-  }
-  clear: both;
-}
-
-#list-area {
-  margin-bottom: 300px;
-  .empty-topic-list {
-    padding: 10px;
-  }
-  .unseen {
-    background-color: transparent;
-    padding: 0;
-    border: 0;
-    color: lighten($red, 10%);
-    font-size: 13px;
-    cursor: default;
+    padding: 4px 10px 4px 8px;
   }
 }
-#topic-list {
-  .alert {
-    margin-bottom: 0;
-    font-size: 14px;
-  }
-  .spinner {
-    margin-top: 40px;
-  }
-}
-span.posted {
-  display: inline-block;
-  text-indent: -9999em;
-  width: 15px;
-  height: 15px;
-  background: {
-    image: image-url("posted.png");
-  };
-}
-
 
 .btn-group .dropdown-toggle:active,
 .btn-group.open .dropdown-toggle {
@@ -307,9 +243,6 @@ span.posted {
 
 .dropdown {
   position: relative;
-}
-.dropdown-toggle {
-  *margin-bottom: -3px;
 }
 .dropdown-toggle:active,
 .open .dropdown-toggle {
@@ -320,7 +253,7 @@ span.posted {
   width: 0;
   height: 0;
   vertical-align: middle;
-  border-top: 4px solid #000000;
+  border-top: 4px solid $primary;
   border-right: 4px solid transparent;
   border-left: 4px solid transparent;
   content: "";
@@ -335,19 +268,14 @@ span.posted {
   float: left;
   width: 280px;
   padding: 4px 0;
-  margin: 1px 0 0;
   list-style: none;
-  background-color: #ffffff;
-  border: 1px solid #ccc;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  *border-right-width: 2px;
-  *border-bottom-width: 2px;
+  background-color: $secondary;
+  border: 1px solid dark-light-choose(rgba(0, 0, 0, 0.2), scale-color($primary, $lightness: -60%));
   border-radius: 5px;
   box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
   background-clip: padding-box;
-  margin-bottom: 20px;
-.title {font-weight: bold; display: block;}
-
+  margin: 1px 0 20px;
+  .title {font-weight: bold; display: block;}
 }
 .dropdown-menu a {
   display: block;
@@ -355,65 +283,75 @@ span.posted {
   clear: both;
   font-weight: normal;
   line-height: 18px;
-  color: #333333;
+  color: $primary;
 }
 .dropdown-menu li > a:hover,
 .dropdown-menu .active > a,
 .dropdown-menu .active > a:hover {
-  color: #ffffff;
+  color: $tertiary;
   text-decoration: none;
-  background-color: #0088cc;
-}
-.open {
-  *z-index: 1000;
+  background-color: scale-color($tertiary, $lightness: 75%);
 }
 .open > .dropdown-menu {
   display: block;
-clear: both;
+  clear: both;
 }
 .fade {
   opacity: 0;
-  -webkit-transition: opacity 0.15s linear;
-  transition: opacity 0.15s linear;
+  transition: opacity linear .15s;
 }
 .fade.in {
   opacity: 1;
 }
 
 ol.category-breadcrumb {
-  display: block;
-  float: left;
-  list-style: none;
-  margin: 0 10px 0 0;
-  padding: 0;
-
-  li {
-    float: left;
-    margin-right: 5px;
-  }
+  margin: 5px 10px 0 0;
 }
 
 .category-dropdown-menu {
-  overflow-x: hidden;
-  overflow-y: scroll;
-  position: absolute;
-  border: 1px solid #ccc;
-  background-color: white;
-  width: 200px;
   height: 200px;
-  padding: 8px 5px 0 7px;
-  z-index: 100;
-  margin-top: 31px;
 
-  .badge-category {
-    font-size: 13px;
-    line-height: 26px;
-    padding: 0px 8px;
-    float: none;
-  }
-
-  div {
-    margin-bottom: 10px;
+  a.badge-category {
+    line-height: 26px !important;
+    margin-bottom: 0 !important;
   }
 }
 
+.top-lists {
+  h2 { margin-left: 10px; }
+  .topic-list { padding-bottom: 10px; }
+  .btn-default.pull-right { margin-right: 10px; }
+}
+
+.category-notification-menu {
+  display: none;
+}
+
+.topic-list-bottom h3 {
+  clear:both;
+  padding-top:10px;
+}
+
+.category-logo {
+  display: block;
+  max-width: 100%;
+  padding: 8px 0;
+}
+
+.period-chooser {
+  button {
+    margin-top: 10px;
+  }
+}
+
+button.dismiss-read {
+  margin-right: 10px;
+}
+
+// base defines extra padding for easier click/top of title field
+// this is a bit too much for mobile
+td.main-link {
+  a.title {
+    padding: 5px 10px 5px 0;
+  }
+}
